@@ -1,20 +1,33 @@
 {
   "targets": {
-    "debug": {
-      "binaryFile": "build/untouched.wasm",
-      "textFile": "build/untouched.wat",
-      "sourceMap": true,
-      "debug": true
-    },
-    "release": {
-      "binaryFile": "build/optimized.wasm",
-      "textFile": "build/optimized.wat",
-      "sourceMap": true,
-      "optimizeLevel": 3,
-      "shrinkLevel": 1,
-      "converge": false,
-      "noAssert": false
-    }
-  },
+    "client_debug": {
+        "binaryFile": "client/deploy/client.wasm",
+        "textFile": "client/deploy/client.wat",
+        "sourceMap": true,
+        "debug": true
+      },
+      "client_release": {
+        "binaryFile": "client/deploy/client.wasm",
+        "textFile": "client/deploy/client.wat",
+        "optimizeLevel": 3,
+        "shrinkLevel": 2,
+        "converge": false,
+        "noAssert": false
+      },
+      "server_debug": {
+        "binaryFile": "server/server.wasm",
+        "textFile": "server/server.wat",
+        "sourceMap": true,
+        "debug": true
+      },
+      "server_release": {
+        "binaryFile": "server/server.wasm",
+        "textFile": "server/server.wat",
+        "optimizeLevel": 3,
+        "shrinkLevel": 2,
+        "converge": false,
+        "noAssert": false
+      }
+      },
   "options": {}
 }

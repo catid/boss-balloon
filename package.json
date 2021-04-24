@@ -2,12 +2,16 @@
   "name": "sphere-shooter",
   "version": "1.0.0",
   "description": "SphereShooter.io",
-  "main": "index.js",
+  "main": "server/index.js",
   "scripts": {
-    "test": "node tests",
-    "asbuild:untouched": "asc assembly/index.ts --target debug",
-    "asbuild:optimized": "asc assembly/index.ts --target release",
-    "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized"
+    "asbuild:client_debug": "asc client/client.ts --target client_debug --runtime minimal --exportTable --exportRuntime --importMemory",
+    "asbuild:client_release": "asc client/client.ts --target client_release --runtime minimal --exportTable --exportRuntime --importMemory",
+    "asbuild:server_debug": "asc server/server.ts --target server_debug --runtime incremental --exportTable --exportRuntime --importMemory",
+    "asbuild:server_release": "asc server/server.ts --target server_release --runtime incremental --exportTable --exportRuntime --importMemory",
+    "release": "npm run asbuild:client_release && npm run asbuild:server_release",
+    "debug": "npm run asbuild:client_debug && npm run asbuild:server_debug",
+    "start": "node server/index.js",
+    "genkey": "openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 100 -nodes"
   },
   "repository": {
     "type": "git",
@@ -29,11 +33,10 @@
     "as-3d-math": "0.0.1",
     "as-bind": "^0.6.1",
     "as-bitray": "^2.4.8",
-    "as-websocket": "^1.0.9",
     "assemblyscript": "^0.18.27",
-    "localtunnel": "^2.0.1",
+    "express": "^4.17.1",
     "node-datachannel": "^0.1.2",
     "rezidb": "^1.0.1",
-    "serve": "^11.3.2"
+    "ws": "^7.4.5"
   }
 }
