@@ -1,7 +1,7 @@
 {
-  "name": "sphere-shooter",
+  "name": "boss-balloon",
   "version": "1.0.0",
-  "description": "SphereShooter.io",
+  "description": "BossBalloon.io",
   "main": "server/index.js",
   "scripts": {
     "asbuild:client_debug": "asc client/client.ts --target client_debug --runtime minimal --exportTable --exportRuntime --importMemory",
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/catid/sphere-shooter.git"
+    "url": "git+https://github.com/catid/boss-balloon.git"
   },
   "keywords": [
     "game"
@@ -23,9 +23,9 @@
   "author": "catid",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/catid/sphere-shooter/issues"
+    "url": "https://github.com/catid/boss-balloon/issues"
   },
-  "homepage": "https://github.com/catid/sphere-shooter#readme",
+  "homepage": "https://github.com/catid/boss-balloon#readme",
   "dependencies": {
     "@assemblyscript/loader": "^0.18.27"
   },

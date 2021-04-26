@@ -121,16 +121,16 @@ function StartRTCPeerConnection(on_offer) {
     };
     webrtc_chan.onmessage = ev => {
         const readyState = webrtc_chan.readyState;
-        console.log('onmessage: ' + readyState);
-        console.log(ev);
+        //console.log('onmessage: ' + readyState);
+        //console.log(ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmModule.exports.__retain(wasmModule.exports.__allocArray(wasmModule.exports.UINT8ARRAY_ID, ev.data));
+        const dataRef = wasmModule.exports.__pin(wasmModule.exports.__newArray(wasmModule.exports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
 
         wasmModule.exports.OnConnectionData(dataRef);
 
-        // Release ARC resource
-        wasmModule.exports.__release(dataRef);
+        // Release resource
+        wasmModule.exports.__unpin(dataRef);
     };
     webrtc_chan.onbufferedamountlow = ev => {
         const readyState = webrtc_chan.readyState;
@@ -156,7 +156,7 @@ function StartRTCPeerConnection(on_offer) {
 // WebSocket
 
 function StartWebsocket() {
-    ws_conn = new WebSocket('wss://localhost:8443/ss/' + ClientSessionId, [], {
+    ws_conn = new WebSocket('wss://localhost:8443/bb/' + ClientSessionId, [], {
         perMessageDeflate: false
     });
     
@@ -383,6 +383,8 @@ function startRender(wasm_file) {
 
 //------------------------------------------------------------------------------
 // Initialization
+
+// FIXME: This should change the canvas size if window is resized
 
 // Make play area a square that fills the space
 var w = window.innerWidth * 0.98 - 32; // Make sure smaller than scrollbar width

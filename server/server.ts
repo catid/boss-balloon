@@ -3,9 +3,11 @@
 
 declare function consoleLog(message: string): void
 declare function sendBuffer(id: i32, buffer: Uint8Array): void
-declare function broadcastBuffer(buffer: Uint8Array): void
+declare function broadcastBuffer(exclude_id: i32, buffer: Uint8Array): void
 
 export const UINT8ARRAY_ID = idof<Uint8Array>();
+
+let Clients = new Map<i32, ConnectedClient>();
 
 
 //------------------------------------------------------------------------------
@@ -47,11 +49,15 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
 
     sendBuffer(id, data);
 
+    Clients.set(id, client);
+
     return client;
 }
 
 export function OnConnectionClose(client: ConnectedClient): void {
     consoleLog("Connection close id=" + client.id.toString());
+
+    Clients.delete(client.id);
 }
 
 export function OnConnectionData(client: ConnectedClient, buffer: Uint8Array): void {

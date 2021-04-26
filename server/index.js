@@ -50,7 +50,7 @@ var webrtc_remote_map = new Map(); // Lookup by remote's self-assigned id
 var webrtc_local_map = new Map(); // Lookup by local numeric id
 var next_local_id = 1; // Increments by 1 for each new unique remote id
 
-node_datachannel.initLogger("Debug");
+node_datachannel.initLogger("Warning");
 
 class WebRTCClient {
     constructor(remote_id, ip) {
@@ -61,7 +61,7 @@ class WebRTCClient {
         this.alive = true;
         this.client_id_str = remote_id + "(" + ip + ")";
 
-        this.conn = new node_datachannel.PeerConnection("ss", {
+        this.conn = new node_datachannel.PeerConnection("bb", {
             enableIceTcp: false,
             iceServers: ["stun:stun.l.google.com:19302"]
         });
@@ -69,18 +69,22 @@ class WebRTCClient {
         this.connected = false;
         this.setupTimeout = setTimeout(() => {
             if (!this.connected) {
+                console.error(this.client_id_str + " Session timed out waiting for data channel to open");
                 this.Close();
             }
         }, 5_000);
 
         this.conn.onStateChange((state) => {
-            console.log(this.client_id_str + " onStateChange state=", state);
+            //console.log(this.client_id_str + " onStateChange state=", state);
+            if (state == "closed" || state == "disconnected") {
+                this.Close();
+            }
         });
         this.conn.onGatheringStateChange((state) => {
-            console.log(this.client_id_str + " onGatheringStateChange state=", state);
+            //console.log(this.client_id_str + " onGatheringStateChange state=", state);
         });
         this.conn.onLocalDescription((sdp, type) => {
-            console.log(this.client_id_str + " onLocalDescription type=", type, " sdp=", sdp);
+            //console.log(this.client_id_str + " onLocalDescription type=", type);
             if (type == "answer") {
                 let ws = ws_remote_map.get(this.remote_id);
                 if (!ws) {
@@ -91,14 +95,14 @@ class WebRTCClient {
                         type: "answer",
                         sdp: sdp
                     }));
-                    console.log(this.client_id_str + " Sending answer to client");
+                    //console.log(this.client_id_str + " Sending answer to client");
                 }
             } else {
-                console.log(this.client_id_str + " Ignoring non-answer type");
+                console.error(this.client_id_str + " Ignoring non-answer type");
             }
         });
         this.conn.onLocalCandidate((candidate, mid) => {
-            console.log(this.client_id_str + " onLocalCandidate candidate=", candidate, " mid=", mid);
+            //console.log(this.client_id_str + " onLocalCandidate candidate=", candidate, " mid=", mid);
             let ws = ws_remote_map.get(this.remote_id);
             if (!ws) {
                 console.error(this.client_id_str + " No websocket found for WebRTC client: Aborting connection");
@@ -109,40 +113,37 @@ class WebRTCClient {
                     candidate: candidate,
                     mid: mid
                 }));
-                console.log(this.client_id_str + " Sending candidate to client");
+                //console.log(this.client_id_str + " Sending candidate to client");
             }
         });
         this.conn.onDataChannel((dc) => {
-            console.log(this.client_id_str + " Starting DataChannel");
+            // Note: onOpen() only works for the createDataChannel() version of API.
+            // This callback indicates channel is open.
+            //console.log(this.client_id_str + " DataChannel Open");
             this.dc = dc;
 
-            this.dc.onOpen(() => {
-                console.log(this.conn.client_id_str + " DataChannel Open");
-
-                this.connected = true;
-                clearTimeout(this.setupTimeout);
-                this.setupTimeout = null;
-
-                this.client = wasmModule.exports.OnConnectionOpen(this.local_id);
-                if (this.client == null) {
-                    this.Close();
-                    return;
-                }
-            });
-
             this.dc.onClosed(() => {
-                console.log(this.client_id_str + " WebRTC DataChannel Closed");
+                //console.log(this.client_id_str + " WebRTC DataChannel Closed");
                 this.Close();
             });
 
             this.dc.onError((err) => {
-                console.log(this.client_id_str + " WebRTC DataChannel Error: ", err);
+                //console.log(this.client_id_str + " WebRTC DataChannel Error: ", err);
             });
 
             this.dc.onMessage((msg) => {
-                console.log(this.client_id_str + " WebRTC Received Msg: ", msg);
                 wasmModule.exports.OnConnectionData(this.client, msg);
             });
+
+            this.connected = true;
+            clearTimeout(this.setupTimeout);
+            this.setupTimeout = null;
+
+            this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id));
+            if (this.client == null) {
+                this.Close();
+                return;
+            }
         });
 
         webrtc_remote_map.set(this.remote_id, this);
@@ -157,6 +158,7 @@ class WebRTCClient {
         }
         if (this.client != null) {
             wasmModule.exports.OnConnectionClose(this.client);
+            wasmModule.exports.__unpin(this.client);
             this.client = null;
         }
         if (this.dc != null) {
@@ -177,9 +179,7 @@ class WebRTCClient {
     }
 
     OnOffer(offer) {
-        console.log(this.client_id_str + " setRemoteDescription offer=", offer);
-        var sdp = offer.sdp;
-        this.conn.setRemoteDescription(sdp, "offer");
+        this.conn.setRemoteDescription(offer.sdp, "offer");
     }
 };
 
@@ -220,13 +220,13 @@ wss.on('connection', (ws, req, url) => {
 
         // Wait for pong timeout
         ws.pongTimeout = setTimeout(() => {
-            console.log("Client heartbeat timeout");
+            console.error("Client heartbeat timeout: id=", remote_id);
             ws.terminate();
         }, 25_000);
     };
 
     ws.on('pong', () => {
-        console.log("Client heartbeat");
+        //console.log("Client heartbeat");
         clearTimeout(ws.pingTimeout);
         clearTimeout(ws.pongTimeout);
 
@@ -239,7 +239,7 @@ wss.on('connection', (ws, req, url) => {
         try {
             let m = JSON.parse(ev);
             if (m.type == "offer" && m.offer != null) {
-                console.log("Got client offer: setRemoteDescription offer=", m.offer);
+                //console.log("Got client offer");
 
                 let client = null;
                 try {
@@ -251,7 +251,7 @@ wss.on('connection', (ws, req, url) => {
                         client.Close();
                     }
 
-                    console.log("Creating new WebRTC client");
+                    //console.log("Creating new WebRTC client");
                     client = new WebRTCClient(remote_id, ip);
                 } catch (err) {
                     console.error("Assertion during creating WebRTC client");
@@ -271,11 +271,11 @@ wss.on('connection', (ws, req, url) => {
     });
 
     ws.on('error', () => {
-        console.log(`WebSocket Client error`);
+        //console.log(`WebSocket Client error`);
     });
 
     ws.on('close', () => {
-        console.log(`WebSocket Client disconnected`);
+        //console.log(`WebSocket Client disconnected`);
         ws.alive = false;
         ws_remote_map.delete(remote_id);
     });
@@ -283,7 +283,7 @@ wss.on('connection', (ws, req, url) => {
 
 httpsServer.on('upgrade', function upgrade(request, socket, head) {
     const url = request.url;
-    if (url && url.startsWith("/ss")) {
+    if (url && url.startsWith("/bb")) {
       wss.handleUpgrade(request, socket, head, function done(ws) {
         wss.emit('connection', ws, request, url);
       });
@@ -306,10 +306,35 @@ const wasmImports = {
             }, 50);
         },
         sendBuffer: (id, buffer) => {
-            // FIXME
+            let client = webrtc_local_map.get(id);
+            if (client == null) {
+                console.error("sendBuffer: Invalid id");
+                return;
+            }
+            if (client.dc == null) {
+                console.error("sendBuffer: WebRTC datachannel is null");
+                return;
+            }
+
+            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+            client.dc.sendMessageBinary(resultArray);
         },
-        broadcastBuffer: (buffer) => {
-            // FIXME
+        broadcastBuffer: (exclude_id, buffer) => {
+            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+
+            for (let client of webrtc_local_map.values()) {
+                if (client == null) {
+                    continue;
+                }
+                if (client.local_id == exclude_id) {
+                    continue;
+                }
+                if (client.dc == null) {
+                    continue;
+                }
+    
+                client.dc.sendMessageBinary(resultArray);
+            }
         }
     }
 };
