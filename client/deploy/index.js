@@ -4,8 +4,7 @@ import * as loader from './loader.esm.js'
 
 const ClientSessionId = Math.random().toString(36).substr(2, 9);
 
-let wasmExports;
-let wasmInstanceExports;
+let wasmModule;
 
 var cnvs = document.getElementById("cnvs");
 
@@ -26,42 +25,135 @@ var cloakOff = new Audio('audio/phaserDown2.ogg')
 
 let webrtc_conn = null;
 let webrtc_chan = null;
+let ws_conn = null;
 
-function StartWebRTC() {
-    webrtc_conn = new RTCPeerConnection(servers);
-    
-    let sendChannel = localConnection.createDataChannel('sendDataChannel');
-    
-    localConnection.onicecandidate = e => {
+function StopWebsocket() {
+    if (ws_conn != null) {
+        ws_conn.close();
+        ws_conn = null;
+    }
+}
+
+function StopWebRTC() {
+    if (webrtc_chan != null) {
+        webrtc_chan.close();
+        webrtc_chan = null;
+    }
+    if (webrtc_conn != null) {
+        webrtc_conn.close();
+        webrtc_conn = null;
+    }
+}
+
+function StartRTCPeerConnection(on_offer) {
+    if (webrtc_conn != null) {
+        console.error("StartRTCPeerConnection: webrtc_conn not null");
+        return;
+    }
+    console.log("Starting WebRTC connection");
+    webrtc_conn = new RTCPeerConnection();
+
+    webrtc_conn.onicecandidate = e => {
         console.log("onicecandidate");
         console.log(e);
     };
-    
-    function onSendChannelStateChange() {
-        const readyState = sendChannel.readyState;
-        console.log('Send channel state is: ' + readyState);
+    webrtc_conn.onconnectionstatechange = e => {
+        console.log("onconnectionstatechange");
+        console.log(e);
     }
-    
-    sendChannel.onopen = onSendChannelStateChange;
-    sendChannel.onclose = onSendChannelStateChange;
-    
-    localConnection.createOffer().then((offer) => {
-        console.log("Got offer")
-        console.log(offer);
-        localConnection.setLocalDescription(offer);
-        // Send offer here
+    webrtc_conn.oniceconnectionstatechange = e => {
+        console.log("oniceconnectionstatechange");
+        console.log(e);
+    }
+    webrtc_conn.ondatachannel = e => {
+        console.log("ondatachannel");
+        console.log(e);
+    }
+    webrtc_conn.onicegatheringstatechange = e => {
+        console.log("onicegatheringstatechange");
+        console.log(e);
+    }
+    webrtc_conn.onidentityresult = e => {
+        console.log("onidentityresult");
+        console.log(e);
+    }
+    webrtc_conn.onnegotiationneeded = e => {
+        console.log("onnegotiationneeded");
+        console.log(e);
+    }
+    webrtc_conn.onremovestream = e => {
+        console.log("onremovestream");
+        console.log(e);
+    }
+    webrtc_conn.onsignalingstatechange = e => {
+        console.log("onsignalingstatechange");
+        console.log(e);
+    }
+    webrtc_conn.ontrack = e => {
+        console.log("ontrack");
+        console.log(e);
+    }
+
+    webrtc_chan = webrtc_conn.createDataChannel('ss', {
+        "ordered": false,
+        //"maxPacketLifeTime": 100, // msec
+        "maxRetransmits": 1
+    });
+
+    webrtc_chan.onopen = ev => {
+        const readyState = webrtc_chan.readyState;
+        console.log('onopen: ' + readyState);
+        console.log(ev);
+        wasmModule.exports.OnConnectionOpen();
+    };
+    webrtc_chan.onerror = ev => {
+        const readyState = webrtc_chan.readyState;
+        console.log('onerror: ' + readyState);
+        console.log(ev);
+    };
+    webrtc_chan.onclose = ev => {
+        const readyState = webrtc_chan.readyState;
+        console.log('onclose: ' + readyState);
+        console.log(ev);
+        wasmModule.exports.OnConnectionClose();
+        StopWebsocket();
+        StopWebRTC();
+    };
+    webrtc_chan.onmessage = ev => {
+        const readyState = webrtc_chan.readyState;
+        console.log('onmessage: ' + readyState);
+        console.log(ev);
+
+        // Make a copy of the buffer into wasm memory
+        const dataRef = wasmModule.exports.__retain(wasmModule.exports.__allocArray(wasmModule.exports.UINT8ARRAY_ID, ev.data));
+
+        wasmModule.exports.OnConnectionData(dataRef);
+
+        // Release ARC resource
+        wasmModule.exports.__release(dataRef);
+    };
+    webrtc_chan.onbufferedamountlow = ev => {
+        const readyState = webrtc_chan.readyState;
+        console.log('onbufferedamountlow: ' + readyState);
+        console.log(ev);
+    };
+
+    webrtc_conn.createOffer().then((offer) => {
+        console.log("Created offer=", offer)
+        return webrtc_conn.setLocalDescription(offer);
+    }).then(() => {
+        console.log("webrtc_conn.localDescription = ", webrtc_conn.localDescription);
+        on_offer(webrtc_conn.localDescription);
     }).catch((reason) => {
         console.log("createOffer failed: " + reason);
+        StopWebsocket();
+        StopWebRTC();
     });
-    
-    // Get answer from peer and set it here! localConnection.setRemoteDescription(desc);
 }
 
 
 //------------------------------------------------------------------------------
 // WebSocket
-
-var ws_conn = null;
 
 function StartWebsocket() {
     ws_conn = new WebSocket('wss://localhost:8443/ss/' + ClientSessionId, [], {
@@ -70,7 +162,19 @@ function StartWebsocket() {
     
     ws_conn.onopen = (ev) => {
         console.log("WebSocket client connected");
-        ws_conn.send('foo');
+
+        if (!webrtc_conn) {
+            StartRTCPeerConnection((offer) => {
+                if (ws_conn != null) {
+                    ws_conn.send(JSON.stringify({
+                        type: "offer",
+                        offer: offer
+                    }));
+                } else {
+                    StopWebRTC();
+                }
+            });
+        }
     };
     ws_conn.onclose = (ev) => {
         console.log("WebSocket client disconnected");
@@ -85,10 +189,27 @@ function StartWebsocket() {
     };
     ws_conn.onmessage = (ev) => {
         console.log("WebSocket server message");
+        try {
+            var m = JSON.parse(ev.data);
+
+            if (m.type == "answer" && webrtc_conn != null) {
+                console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
+                webrtc_conn.setRemoteDescription({
+                    type: "answer",
+                    sdp: m.sdp
+                });
+            } else if (m.type == "candidate" && webrtc_conn != null) {
+                console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
+                webrtc_conn.addIceCandidate({
+                    candidate: m.candidate,
+                    sdpMid: m.mid
+                });
+            }
+        } catch (err) {
+            console.error("Websocket message parse failed: err=", err);
+        }
     };
 }
-
-StartWebsocket();
 
 
 //------------------------------------------------------------------------------
@@ -185,7 +306,7 @@ document.addEventListener('mousedown', () => {
 // Each frame render runs this function
 function renderFrame() {
     // call the LoopCallback function in the WASM module
-    wasmInstanceExports.RenderFrame(performance.now(), finger_x, finger_y);
+    wasmModule.exports.RenderFrame(performance.now(), finger_x, finger_y);
 
     // requestAnimationFrame calls renderFrame the next time a frame is rendered
     requestAnimationFrame(renderFrame);
@@ -199,10 +320,16 @@ const wasmImports = {
     client: {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
-            var copy = wasmExports.__getString(m);
+            var copy = wasmModule.exports.__getString(m);
             setTimeout(() => {
                 console.log(copy);
             }, 50);
+        },
+        sendBuffer: (buffer) => {
+            if (webrtc_chan != null) {
+                var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+                webrtc_chan.send(resultArray);
+            }
         },
         playExplosion: () => {
             setTimeout(() => {
@@ -237,15 +364,16 @@ function startRender(wasm_file) {
     initASWebGLue(importObject);
 
     (async () => {
-        const wasm = await fetch(wasm_file);
+        const wasm_fetch = await fetch(wasm_file);
 
-        loader.instantiateStreaming(wasm, importObject).then(obj => {
-            wasmExports = obj.exports;
-            wasmInstanceExports = obj.instance.exports;
+        loader.instantiateStreaming(wasm_fetch, importObject).then(obj => {
+            wasmModule = obj;
 
             ASWebGLReady(obj, importObject);
 
-            wasmInstanceExports.Initialize();
+            wasmModule.exports.Initialize();
+
+            StartWebsocket();
 
             requestAnimationFrame(renderFrame);
         });

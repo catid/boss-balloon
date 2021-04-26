@@ -6,6 +6,9 @@ import { Box3 } from "../node_modules/as-3d-math/src/as/index";
 // Imports
 
 declare function consoleLog(message: string): void
+declare function sendBuffer(buffer: Uint8Array): void
+
+export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 
 //------------------------------------------------------------------------------
@@ -33,4 +36,27 @@ export function RenderFrame(now_msec: f64, finger_x: f64, finger_y: f64): void {
 
     // Collect GC after render tasks are done
     __collect();
+}
+
+
+//------------------------------------------------------------------------------
+// Connection
+
+export function OnConnectionOpen(): void {
+    consoleLog("Connection open");
+
+    const data = new Uint8Array(10);
+    for (let i: i32 = 0; i < 10; ++i) {
+        data[i] = i as u8;
+    }
+
+    sendBuffer(data);
+}
+
+export function OnConnectionClose(): void {
+    consoleLog("Connection close");
+}
+
+export function OnConnectionData(buffer: Uint8Array): void {
+    consoleLog("Connection data: len=" + buffer.length.toString());
 }
