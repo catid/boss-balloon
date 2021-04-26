@@ -5,6 +5,7 @@ import * as loader from './loader.esm.js'
 const ClientSessionId = Math.random().toString(36).substr(2, 9);
 
 let wasmModule;
+let wasmExports; // Shortcut for wasmExports
 
 var cnvs = document.getElementById("cnvs");
 
@@ -14,18 +15,17 @@ var cnvs = document.getElementById("cnvs");
 
 var song = new Audio('audio/song-hq.mp3')
 var laser = new Audio('audio/laserSmall_000.ogg')
-var enemyLaser = new Audio('audio/laserSmall_003.ogg')
 var explosion = new Audio('audio/explosion-hq.mp3')
-var cloakOn = new Audio('audio/phaserUp2.ogg')
-var cloakOff = new Audio('audio/phaserDown2.ogg')
 
 
 //------------------------------------------------------------------------------
 // WebRTC
 
 let webrtc_conn = null;
-let webrtc_chan = null;
+let webrtc_unreliable = null;
+let webrtc_reliable = null;
 let ws_conn = null;
+let webrtc_dc_count = 0;
 
 function StopWebsocket() {
     if (ws_conn != null) {
@@ -35,14 +35,19 @@ function StopWebsocket() {
 }
 
 function StopWebRTC() {
-    if (webrtc_chan != null) {
-        webrtc_chan.close();
-        webrtc_chan = null;
+    if (webrtc_unreliable != null) {
+        webrtc_unreliable.close();
+        webrtc_unreliable = null;
+    }
+    if (webrtc_reliable != null) {
+        webrtc_reliable.close();
+        webrtc_reliable = null;
     }
     if (webrtc_conn != null) {
         webrtc_conn.close();
         webrtc_conn = null;
     }
+    webrtc_dc_count = 0;
 }
 
 function StartRTCPeerConnection(on_offer) {
@@ -50,102 +55,123 @@ function StartRTCPeerConnection(on_offer) {
         console.error("StartRTCPeerConnection: webrtc_conn not null");
         return;
     }
-    console.log("Starting WebRTC connection");
+    //console.log("Starting WebRTC connection");
     webrtc_conn = new RTCPeerConnection();
 
     webrtc_conn.onicecandidate = e => {
-        console.log("onicecandidate");
-        console.log(e);
+        //console.log("onicecandidate", e);
     };
     webrtc_conn.onconnectionstatechange = e => {
-        console.log("onconnectionstatechange");
-        console.log(e);
+        //console.log("onconnectionstatechange", e);
     }
     webrtc_conn.oniceconnectionstatechange = e => {
-        console.log("oniceconnectionstatechange");
-        console.log(e);
+        //console.log("oniceconnectionstatechange", e);
     }
     webrtc_conn.ondatachannel = e => {
-        console.log("ondatachannel");
-        console.log(e);
+        //console.log("ondatachannel", e);
     }
     webrtc_conn.onicegatheringstatechange = e => {
-        console.log("onicegatheringstatechange");
-        console.log(e);
+        //console.log("onicegatheringstatechange", e);
     }
     webrtc_conn.onidentityresult = e => {
-        console.log("onidentityresult");
-        console.log(e);
+        //console.log("onidentityresult", e);
     }
     webrtc_conn.onnegotiationneeded = e => {
-        console.log("onnegotiationneeded");
-        console.log(e);
+        //console.log("onnegotiationneeded", e);
     }
     webrtc_conn.onremovestream = e => {
-        console.log("onremovestream");
-        console.log(e);
+        //console.log("onremovestream", e);
     }
     webrtc_conn.onsignalingstatechange = e => {
-        console.log("onsignalingstatechange");
-        console.log(e);
+        //console.log("onsignalingstatechange", e);
     }
     webrtc_conn.ontrack = e => {
-        console.log("ontrack");
-        console.log(e);
+        //console.log("ontrack", e);
     }
 
-    webrtc_chan = webrtc_conn.createDataChannel('ss', {
+    webrtc_unreliable = webrtc_conn.createDataChannel('unreliable', {
         "ordered": false,
-        //"maxPacketLifeTime": 100, // msec
-        "maxRetransmits": 1
+        "maxRetransmits": 0 // no retransmits
     });
 
-    webrtc_chan.onopen = ev => {
-        const readyState = webrtc_chan.readyState;
-        console.log('onopen: ' + readyState);
-        console.log(ev);
-        wasmModule.exports.OnConnectionOpen();
+    webrtc_unreliable.onopen = ev => {
+        //console.log('onopen:', webrtc_unreliable.readyState, ev);
+        webrtc_dc_count++;
+        if (webrtc_dc_count >= 2) {
+            wasmExports.OnConnectionOpen();
+        }
     };
-    webrtc_chan.onerror = ev => {
-        const readyState = webrtc_chan.readyState;
-        console.log('onerror: ' + readyState);
-        console.log(ev);
+    webrtc_unreliable.onerror = ev => {
+        console.log('onerror:', webrtc_unreliable.readyState, ev);
     };
-    webrtc_chan.onclose = ev => {
-        const readyState = webrtc_chan.readyState;
-        console.log('onclose: ' + readyState);
-        console.log(ev);
-        wasmModule.exports.OnConnectionClose();
+    webrtc_unreliable.onclose = ev => {
+        //console.log('onclose:', webrtc_unreliable.readyState, ev);
+        wasmExports.OnConnectionClose();
         StopWebsocket();
         StopWebRTC();
     };
-    webrtc_chan.onmessage = ev => {
-        const readyState = webrtc_chan.readyState;
-        //console.log('onmessage: ' + readyState);
-        //console.log(ev);
+    webrtc_unreliable.onmessage = ev => {
+        let recv_msec = performance.now();
+        //console.log('onmessage:', webrtc_unreliable.readyState, ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmModule.exports.__pin(wasmModule.exports.__newArray(wasmModule.exports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
 
-        wasmModule.exports.OnConnectionData(dataRef);
+        wasmExports.OnConnectionUnreliableData(recv_msec, dataRef);
 
         // Release resource
-        wasmModule.exports.__unpin(dataRef);
+        wasmExports.__unpin(dataRef);
     };
-    webrtc_chan.onbufferedamountlow = ev => {
-        const readyState = webrtc_chan.readyState;
-        console.log('onbufferedamountlow: ' + readyState);
-        console.log(ev);
+    webrtc_unreliable.onbufferedamountlow = ev => {
+        //console.log('onbufferedamountlow:', webrtc_unreliable.readyState, ev);
     };
 
+    webrtc_reliable = webrtc_conn.createDataChannel('reliable', {
+        "ordered": true,
+        "maxRetransmits": null // unlimited
+    });
+
+    webrtc_reliable.onopen = ev => {
+        //console.log('onopen:', webrtc_reliable.readyState, ev);
+        webrtc_dc_count++;
+        if (webrtc_dc_count >= 2) {
+            wasmExports.OnConnectionOpen();
+        }
+    };
+    webrtc_reliable.onerror = ev => {
+        console.log('onerror:', webrtc_reliable.readyState, ev);
+    };
+    webrtc_reliable.onclose = ev => {
+        //console.log('onclose:', webrtc_reliable.readyState, ev);
+        wasmExports.OnConnectionClose();
+        StopWebsocket();
+        StopWebRTC();
+    };
+    webrtc_reliable.onmessage = ev => {
+        //console.log('onmessage:', webrtc_reliable.readyState, ev);
+
+        // Make a copy of the buffer into wasm memory
+        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+
+        wasmExports.OnConnectionReliableData(dataRef);
+
+        // Release resource
+        wasmExports.__unpin(dataRef);
+    };
+    webrtc_reliable.onbufferedamountlow = ev => {
+        //console.log('onbufferedamountlow:', webrtc_reliable.readyState, ev);
+    };
+
+    // Let's go!
+
     webrtc_conn.createOffer().then((offer) => {
-        console.log("Created offer=", offer)
+        //console.log("Created offer=", offer)
         return webrtc_conn.setLocalDescription(offer);
     }).then(() => {
-        console.log("webrtc_conn.localDescription = ", webrtc_conn.localDescription);
+        //console.log("webrtc_conn.localDescription = ", webrtc_conn.localDescription);
         on_offer(webrtc_conn.localDescription);
     }).catch((reason) => {
-        console.log("createOffer failed: " + reason);
+        console.error("createOffer failed: " + reason);
         StopWebsocket();
         StopWebRTC();
     });
@@ -177,7 +203,7 @@ function StartWebsocket() {
         }
     };
     ws_conn.onclose = (ev) => {
-        console.log("WebSocket client disconnected");
+        console.error("WebSocket client disconnected");
         ws_conn = null;
 
         setTimeout(() => {
@@ -185,21 +211,21 @@ function StartWebsocket() {
         }, 1_000);
     };
     ws_conn.onerror = (ev) => {
-        console.log("WebSocket error");
+        console.error("WebSocket error", ev);
     };
     ws_conn.onmessage = (ev) => {
-        console.log("WebSocket server message");
+        //console.log("WebSocket server message");
         try {
             var m = JSON.parse(ev.data);
 
             if (m.type == "answer" && webrtc_conn != null) {
-                console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
+                //console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
                 webrtc_conn.setRemoteDescription({
                     type: "answer",
                     sdp: m.sdp
                 });
             } else if (m.type == "candidate" && webrtc_conn != null) {
-                console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
+                //console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
                 webrtc_conn.addIceCandidate({
                     candidate: m.candidate,
                     sdpMid: m.mid
@@ -306,7 +332,7 @@ document.addEventListener('mousedown', () => {
 // Each frame render runs this function
 function renderFrame() {
     // call the LoopCallback function in the WASM module
-    wasmModule.exports.RenderFrame(performance.now(), finger_x, finger_y);
+    wasmExports.RenderFrame(performance.now(), finger_x, finger_y);
 
     // requestAnimationFrame calls renderFrame the next time a frame is rendered
     requestAnimationFrame(renderFrame);
@@ -320,15 +346,19 @@ const wasmImports = {
     client: {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
-            var copy = wasmModule.exports.__getString(m);
+            var copy = wasmExports.__getString(m);
             setTimeout(() => {
                 console.log(copy);
             }, 50);
         },
-        sendBuffer: (buffer) => {
-            if (webrtc_chan != null) {
-                var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
-                webrtc_chan.send(resultArray);
+        sendReliable: (buffer) => {
+            if (webrtc_reliable != null) {
+                webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
+            }
+        },
+        sendUnreliable: (buffer) => {
+            if (webrtc_unreliable != null) {
+                webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
             }
         },
         playExplosion: () => {
@@ -368,10 +398,11 @@ function startRender(wasm_file) {
 
         loader.instantiateStreaming(wasm_fetch, importObject).then(obj => {
             wasmModule = obj;
+            wasmExports = wasmModule.exports;
 
             ASWebGLReady(obj, importObject);
 
-            wasmModule.exports.Initialize();
+            wasmExports.Initialize();
 
             StartWebsocket();
 

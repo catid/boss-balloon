@@ -60,16 +60,17 @@ class WebRTCClient {
         this.ip = ip;
         this.alive = true;
         this.client_id_str = remote_id + "(" + ip + ")";
+        this.channels_open = 0;
+        this.connected = false; // Connected if we get all datachannels open
 
         this.conn = new node_datachannel.PeerConnection("bb", {
             enableIceTcp: false,
             iceServers: ["stun:stun.l.google.com:19302"]
         });
 
-        this.connected = false;
         this.setupTimeout = setTimeout(() => {
             if (!this.connected) {
-                console.error(this.client_id_str + " Session timed out waiting for data channel to open");
+                console.error(this.client_id_str + " Session timed out waiting for data channels to open");
                 this.Close();
             }
         }, 5_000);
@@ -120,29 +121,61 @@ class WebRTCClient {
             // Note: onOpen() only works for the createDataChannel() version of API.
             // This callback indicates channel is open.
             //console.log(this.client_id_str + " DataChannel Open");
-            this.dc = dc;
-
-            this.dc.onClosed(() => {
-                //console.log(this.client_id_str + " WebRTC DataChannel Closed");
-                this.Close();
-            });
-
-            this.dc.onError((err) => {
-                //console.log(this.client_id_str + " WebRTC DataChannel Error: ", err);
-            });
-
-            this.dc.onMessage((msg) => {
-                wasmModule.exports.OnConnectionData(this.client, msg);
-            });
-
-            this.connected = true;
-            clearTimeout(this.setupTimeout);
-            this.setupTimeout = null;
-
-            this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id));
-            if (this.client == null) {
-                this.Close();
+            let label = dc.getLabel();
+            if (label == "unreliable") {
+                if (this.dc_unreliable != null) {
+                    console.error("Duplicate unreliable channels");
+                    this.Close();
+                    return;
+                }
+                this.channels_open++;
+                this.dc_unreliable = dc;
+                dc.onClosed(() => {
+                    //console.log(this.client_id_str + " WebRTC Unreliable DataChannel Closed");
+                    this.Close();
+                });
+                dc.onError((err) => {
+                    console.log(this.client_id_str + " WebRTC Unreliable DataChannel Error: ", err);
+                });
+            } else if (label == "reliable") {
+                if (this.dc_reliable != null) {
+                    console.error("Duplicate reliable channels");
+                    this.Close();
+                    return;
+                }
+                this.channels_open++;
+                this.dc_reliable = dc;
+                dc.onClosed(() => {
+                    //console.log(this.client_id_str + " WebRTC Reliable DataChannel Closed");
+                    this.Close();
+                });
+                dc.onError((err) => {
+                    console.log(this.client_id_str + " WebRTC Reliable DataChannel Error: ", err);
+                });
+            } else {
+                console.error("Unrecognized channel label ignored:", label);
                 return;
+            }
+
+            if (this.channels_open >= 2) {
+                this.connected = true;
+                clearTimeout(this.setupTimeout);
+                this.setupTimeout = null;
+    
+                this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id));
+                if (this.client == null) {
+                    console.error("OnConnectionOpen failed");
+                    this.Close();
+                    return;
+                }
+
+                // Start accepting messages
+                this.dc_unreliable.onMessage((msg) => {
+                    wasmModule.exports.OnUnreliableData(this.client, performance.now(), msg);
+                });
+                this.dc_reliable.onMessage((msg) => {
+                    wasmModule.exports.OnReliableData(this.client, msg);
+                });
             }
         });
 
@@ -161,10 +194,15 @@ class WebRTCClient {
             wasmModule.exports.__unpin(this.client);
             this.client = null;
         }
-        if (this.dc != null) {
-            this.dc.close();
-            this.dc = null;
-            console.log(this.client_id_str + " we closed data channel");
+        if (this.dc_unreliable != null) {
+            this.dc_unreliable.close();
+            this.dc_unreliable = null;
+            //console.log(this.client_id_str + " we closed data channel (unreliable)");
+        }
+        if (this.dc_reliable != null) {
+            this.dc_reliable.close();
+            this.dc_reliable = null;
+            //console.log(this.client_id_str + " we closed data channel (reliable)");
         }
         if (this.conn != null) {
             this.conn.close();
@@ -305,21 +343,33 @@ const wasmImports = {
                 console.log(copy);
             }, 50);
         },
-        sendBuffer: (id, buffer) => {
+        sendReliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
                 console.error("sendBuffer: Invalid id");
                 return;
             }
-            if (client.dc == null) {
-                console.error("sendBuffer: WebRTC datachannel is null");
+            if (client.dc_reliable == null) {
+                console.error("sendBuffer: WebRTC reliable datachannel is null");
                 return;
             }
 
-            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
-            client.dc.sendMessageBinary(resultArray);
+            client.dc_reliable.sendMessageBinary(wasmModule.exports.__getUint8ArrayView(buffer));
         },
-        broadcastBuffer: (exclude_id, buffer) => {
+        sendUnreliable: (id, buffer) => {
+            let client = webrtc_local_map.get(id);
+            if (client == null) {
+                console.error("sendBuffer: Invalid id");
+                return;
+            }
+            if (client.dc_unreliable == null) {
+                console.error("sendBuffer: WebRTC unreliable datachannel is null");
+                return;
+            }
+
+            client.dc_unreliable.sendMessageBinary(wasmModule.exports.__getUint8ArrayView(buffer));
+        },
+        broadcastReliable: (exclude_id, buffer) => {
             var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
 
             for (let client of webrtc_local_map.values()) {
@@ -329,11 +379,28 @@ const wasmImports = {
                 if (client.local_id == exclude_id) {
                     continue;
                 }
-                if (client.dc == null) {
+                if (client.dc_reliable == null) {
                     continue;
                 }
     
-                client.dc.sendMessageBinary(resultArray);
+                client.dc_reliable.sendMessageBinary(resultArray);
+            }
+        },
+        broadcastUnreliable: (exclude_id, buffer) => {
+            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+
+            for (let client of webrtc_local_map.values()) {
+                if (client == null) {
+                    continue;
+                }
+                if (client.local_id == exclude_id) {
+                    continue;
+                }
+                if (client.dc_unreliable == null) {
+                    continue;
+                }
+    
+                client.dc_unreliable.sendMessageBinary(resultArray);
             }
         }
     }

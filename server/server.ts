@@ -2,8 +2,10 @@
 // Imports
 
 declare function consoleLog(message: string): void
-declare function sendBuffer(id: i32, buffer: Uint8Array): void
-declare function broadcastBuffer(exclude_id: i32, buffer: Uint8Array): void
+declare function sendReliable(id: i32, buffer: Uint8Array): void
+declare function sendUnreliable(id: i32, buffer: Uint8Array): void
+declare function broadcastReliable(exclude_id: i32, buffer: Uint8Array): void
+declare function broadcastUnreliable(exclude_id: i32, buffer: Uint8Array): void
 
 export const UINT8ARRAY_ID = idof<Uint8Array>();
 
@@ -47,7 +49,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
         data[i] = i as u8;
     }
 
-    sendBuffer(id, data);
+    sendReliable(id, data);
 
     Clients.set(id, client);
 
@@ -60,6 +62,10 @@ export function OnConnectionClose(client: ConnectedClient): void {
     Clients.delete(client.id);
 }
 
-export function OnConnectionData(client: ConnectedClient, buffer: Uint8Array): void {
-    consoleLog("Connection data: len=" + buffer.length.toString() + " id=" + client.id.toString());
+export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer: Uint8Array): void {
+    consoleLog("Unreliable data: len=" + buffer.length.toString() + " id=" + client.id.toString());
+}
+
+export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): void {
+    consoleLog("Reliable data: len=" + buffer.length.toString() + " id=" + client.id.toString());
 }
