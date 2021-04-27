@@ -1,6 +1,14 @@
 export namespace Netcode {
 
 /*
+    Maximum packet size = 1100 bytes before splitting,
+    since there are about 64 bytes of overhead from WebRTC,
+    and we want to conservatively fit within UDP/IPv6 frame MTU.
+*/
+export const kMaxPacketBytes: i32 = 1100;
+
+
+/*
     Unreliable packet formats:
 
     All packets can be appended to eachother.
