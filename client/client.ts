@@ -158,9 +158,9 @@ class SampleTS24 {
         this.value = sample.value;
         this.t = sample.t;
     }
-    Reset(): void {
-        this.value = 0;
-        this.t = 0;
+    Set(value: u32 = 0, t: i64 = 0): void {
+        this.value = value;
+        this.t = t;
     }
 }
 
@@ -175,10 +175,9 @@ class WindowedMinTS24 {
     GetBest(): u32 {
         return this.samples[0].value;
     }
-    Reset(value: u32, t: i64): void {
+    Reset(value: u32 = 0, t: i64 = 0): void {
         for (let i: i32 = 0; i < 3; ++i) {
-            this.samples[i].value = value;
-            this.samples[i].t = t;
+            this.samples[i].Set(value, t);
         }
     }
     Update(value: u32, t: i64, window_length: i64): void {
@@ -193,30 +192,22 @@ class WindowedMinTS24 {
 
         // Insert the new value into the sorted array
         if (TS24_IsLessOrEqual(value, this.samples[1].value)) {
-            this.samples[2].value = value;
-            this.samples[2].t = t;
-            this.samples[1].value = value;
-            this.samples[1].t = t;
+            this.samples[2].Set(value, t);
+            this.samples[1].Set(value, t);
         } else if (TS24_IsLessOrEqual(value, this.samples[2].value)) {
-            this.samples[2].value = value;
-            this.samples[2].t = t;
+            this.samples[2].Set(value, t);
         }
 
         // Expire best if it has been the best for a long time
         if (this.samples[0].TimeoutExpired(t, window_length)) {
             if (this.samples[1].TimeoutExpired(t, window_length)) {
-                this.samples[0].value = this.samples[2].value;
-                this.samples[0].t = this.samples[2].t;
-                this.samples[1].value = value;
-                this.samples[1].t = t;
+                this.samples[0].CopyFrom(this.samples[2]);
+                this.samples[1].Set(value, t);
             } else {
-                this.samples[0].value = this.samples[1].value;
-                this.samples[0].t = this.samples[1].t;
-                this.samples[1].value = this.samples[2].value;
-                this.samples[1].t = this.samples[2].t;
+                this.samples[0].CopyFrom(this.samples[1]);
+                this.samples[1].CopyFrom(this.samples[2]);
             }
-            this.samples[2].value = value;
-            this.samples[2].t = t;
+            this.samples[2].Set(value, t);
             return;
         }
 
@@ -224,10 +215,8 @@ class WindowedMinTS24 {
         if (this.samples[1].value == this.samples[0].value &&
             this.samples[1].TimeoutExpired(t, window_length / 4))
         {
-            this.samples[1].value = value;
-            this.samples[1].t = t;
-            this.samples[2].value = value;
-            this.samples[2].t = t;
+            this.samples[1].Set(value, t);
+            this.samples[2].Set(value, t);
             return;
         }
 
@@ -235,8 +224,7 @@ class WindowedMinTS24 {
         if (this.samples[2].value == this.samples[1].value &&
             this.samples[2].TimeoutExpired(t, window_length / 2))
         {
-            this.samples[2].value = value;
-            this.samples[2].t = t;
+            this.samples[2].Set(value, t);
         }
     }
 }
