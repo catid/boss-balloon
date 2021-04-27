@@ -124,7 +124,7 @@ export function RenderFrame(
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = i64(now_msec - netcode_start_msec * 4.0);
+    let t: i64 = i64((now_msec - netcode_start_msec) * 4.0);
 
     //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
 
@@ -228,7 +228,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
         if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
             // Convert timestamp to integer with 1/4 msec (desired) precision
-            let t: i64 = i64(recv_msec - netcode_start_msec * 4.0);
+            let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
 
             let ptr: usize = buffer.dataStart + offset;
 
@@ -244,7 +244,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             // Convert timestamp to integer with 1/4 msec (desired) precision
-            let t: i64 = i64(recv_msec - netcode_start_msec * 4.0);
+            let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
 
             let ptr: usize = buffer.dataStart + offset;
 
