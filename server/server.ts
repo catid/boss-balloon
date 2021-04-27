@@ -1,6 +1,8 @@
 //------------------------------------------------------------------------------
 // Imports
 
+import { Netcode } from "../netcode/netcode";
+
 declare function consoleLog(message: string): void
 declare function sendReliable(id: i32, buffer: Uint8Array): void
 declare function sendUnreliable(id: i32, buffer: Uint8Array): void
@@ -34,14 +36,18 @@ export function OnTick(now_msec: f64): void {
 
 export class ConnectedClient {
     id: i32;
+    // For netcode we use timestamps relative to the connection open time, because
+    // we waste fewer mantissa bits on useless huge values.
+    netcode_start_msec: f64 = 0;
 
-    constructor(id: i32) {
+    constructor(id: i32, netcode_start_msec: f64) {
         this.id = id;
+        this.netcode_start_msec = netcode_start_msec;
     }
 };
 
-export function OnConnectionOpen(id: i32): ConnectedClient | null {
-    let client = new ConnectedClient(id);
+export function OnConnectionOpen(id: i32, now_msec: f64): ConnectedClient | null {
+    let client = new ConnectedClient(id, now_msec);
     consoleLog("Connection open id=" + client.id.toString());
 
     const data = new Uint8Array(10);
@@ -63,7 +69,20 @@ export function OnConnectionClose(client: ConnectedClient): void {
 }
 
 export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer: Uint8Array): void {
-    consoleLog("Unreliable data: len=" + buffer.length.toString() + " id=" + client.id.toString());
+    if (buffer.length < 2) {
+        // Ignore short messages
+        return;
+    }
+
+    const type: u8 = buffer[0];
+    if (type == Netcode.Type.TimeSync) {
+        // Convert timestamp to integer with 0.1 msec (desired) precision
+        let t: i64 = (recv_msec - client.netcode_start_msec * 10.0) as i64;
+
+    }
+    else if (type == Netcode.Type.Position) {
+
+    }
 }
 
 export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): void {

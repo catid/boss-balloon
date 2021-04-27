@@ -162,7 +162,7 @@ class WebRTCClient {
                 clearTimeout(this.setupTimeout);
                 this.setupTimeout = null;
     
-                this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id));
+                this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id, performance.now()));
                 if (this.client == null) {
                     console.error("OnConnectionOpen failed");
                     this.Close();

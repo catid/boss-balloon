@@ -57,7 +57,7 @@ function StartRTCPeerConnection(on_offer) {
     }
     //console.log("Starting WebRTC connection");
     webrtc_conn = new RTCPeerConnection();
-
+/*
     webrtc_conn.onicecandidate = e => {
         //console.log("onicecandidate", e);
     };
@@ -88,17 +88,17 @@ function StartRTCPeerConnection(on_offer) {
     webrtc_conn.ontrack = e => {
         //console.log("ontrack", e);
     }
-
+*/
     webrtc_unreliable = webrtc_conn.createDataChannel('unreliable', {
         "ordered": false,
-        "maxRetransmits": 0 // no retransmits
+        "maxPacketLifeTime": 100 // msec
     });
 
     webrtc_unreliable.onopen = ev => {
         //console.log('onopen:', webrtc_unreliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports.OnConnectionOpen();
+            wasmExports.OnConnectionOpen(performance.now());
         }
     };
     webrtc_unreliable.onerror = ev => {
@@ -128,14 +128,14 @@ function StartRTCPeerConnection(on_offer) {
 
     webrtc_reliable = webrtc_conn.createDataChannel('reliable', {
         "ordered": true,
-        "maxRetransmits": null // unlimited
+        "maxRetransmits": 1000 // lots
     });
 
     webrtc_reliable.onopen = ev => {
         //console.log('onopen:', webrtc_reliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports.OnConnectionOpen();
+            wasmExports.OnConnectionOpen(performance.now());
         }
     };
     webrtc_reliable.onerror = ev => {
@@ -329,12 +329,38 @@ document.addEventListener('mousedown', () => {
 //------------------------------------------------------------------------------
 // Render
 
-// Each frame render runs this function
-function renderFrame() {
-    // call the LoopCallback function in the WASM module
-    wasmExports.RenderFrame(performance.now(), finger_x, finger_y);
+let window_w = 0, window_h = 0;
+let canvas_w = 0, canvas_h = 0;
+let last_resize_msec = 0;
 
-    // requestAnimationFrame calls renderFrame the next time a frame is rendered
+function renderFrame() {
+    // Update canvas size to window size as user resizes the window
+    if (window.innerWidth != window_w || window.innerHeight != window_h) {
+        // Resize no more than once every 10th of a second to avoid lag on desktop
+        if (performance.now() - last_resize_msec >= 100.0) {
+            window_w = window.innerWidth;
+            window_h = window.innerHeight;
+
+            // Subtract extra for scrollbars in case they show up for some reason
+            canvas_w = window_w * 0.98 - 32;
+            canvas_h = window_h * 0.98 - 32;
+            if (canvas_w > canvas_h) {
+                canvas_w = canvas_h;
+            } else {
+                canvas_h = canvas_w;
+            }
+            cnvs.width = canvas_w;
+            cnvs.height = canvas_w;
+            cnvs.style.width = canvas_w + "px";
+            cnvs.style.height = canvas_w + "px";
+    
+            last_resize_msec = performance.now();
+        }
+    }
+
+    // Render using wasm
+    wasmExports.RenderFrame(performance.now(), finger_x, finger_y, canvas_w, canvas_h);
+
     requestAnimationFrame(renderFrame);
 }
 
@@ -376,6 +402,13 @@ const wasmImports = {
                     laser.play();
                 }
             }, 0);
+        },
+        serverLoginGood: () => {
+            console.log("LoginGood");
+        },
+        serverLoginBad: (reason) => {
+            var copy = wasmExports.__getString(reason);
+            console.error("LoginBad:", copy);
         }
     }
 };
@@ -410,22 +443,5 @@ function startRender(wasm_file) {
         });
     })();
 }
-
-
-//------------------------------------------------------------------------------
-// Initialization
-
-// FIXME: This should change the canvas size if window is resized
-
-// Make play area a square that fills the space
-var w = window.innerWidth * 0.98 - 32; // Make sure smaller than scrollbar width
-var h = window.innerHeight * 0.98;
-if (w > h) {
-    w = h;
-}
-cnvs.width = w;
-cnvs.height = w;
-cnvs.style.width = w + "px";
-cnvs.style.height = w + "px";
 
 startRender("client.wasm");
