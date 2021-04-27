@@ -153,6 +153,10 @@ class SampleTS24 {
         this.value = sample.value;
         this.t = sample.t;
     }
+    Reset(): void {
+        this.value = 0;
+        this.t = 0;
+    }
 }
 
 class WindowedMinTS24 {
@@ -169,13 +173,16 @@ class WindowedMinTS24 {
         return this.samples[0].value;
     }
 
-    Reset(sample: SampleTS24 | null) {
+    Reset(sample: SampleTS24): void {
         if (!sample) {
-            sample = new SampleTS24();
+            this.samples[0].Reset();
+            this.samples[1].Reset();
+            this.samples[2].Reset();
+        } else {
+            this.samples[0].CopyFrom(sample);
+            this.samples[1].CopyFrom(sample);
+            this.samples[2].CopyFrom(sample);
         }
-        this.samples[0].CopyFrom(sample);
-        this.samples[1].CopyFrom(sample);
-        this.samples[2].CopyFrom(sample);
     }
 
     Update(value: u32, t: i64, window_length: i64): void {
@@ -223,14 +230,13 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
+        let ptr: usize = buffer.dataStart + offset;
         const remaining: i32 = buffer.length - offset;
-        const type: u8 = buffer[offset];
+        const type: u8 = load<u8>(ptr, 0);
 
         if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
             // Convert timestamp to integer with 1/4 msec (desired) precision
             let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
-
-            let ptr: usize = buffer.dataStart + offset;
 
             let peer_ts: u32 = load<u16>(ptr, 1);
             peer_ts |= u32(load<u8>(ptr, 3)) << 16;
@@ -245,8 +251,6 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             // Convert timestamp to integer with 1/4 msec (desired) precision
             let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
-
-            let ptr: usize = buffer.dataStart + offset;
 
             let peer_ts: u32 = load<u16>(ptr, 1);
             peer_ts |= u32(load<u8>(ptr, 3)) << 16;
@@ -356,17 +360,18 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
     let offset: i32 = 0;
     while (offset < buffer.length) {
         let ptr = buffer.dataStart + offset;
-
+        const remaining: i32 = buffer.length - offset;
         const type: u8 = load<u8>(ptr, 0);
-        if (type == Netcode.ReliableType.SetId && buffer.length >= 2) {
+
+        if (type == Netcode.ReliableType.SetId && remaining >= 2) {
             SelfId = load<u8>(ptr, 1);
             offset += 2;
         } else if (type == Netcode.ReliableType.ServerLoginGood) {
             serverLoginGood();
             offset++;
-        } else if (type == Netcode.ReliableType.ServerLoginBad && buffer.length >= 3) {
+        } else if (type == Netcode.ReliableType.ServerLoginBad && remaining >= 3) {
             let len: i32 = load<u16>(ptr, 1);
-            if (len + 3 > buffer.length) {
+            if (len + 3 > remaining) {
                 consoleLog("Truncated loginbad response");
                 return;
             }
@@ -376,7 +381,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             serverLoginBad(s);
 
             offset += 3 + len;
-        } else if (type == Netcode.ReliableType.SetPlayer && buffer.length >= 15) {
+        } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
             let id: u8 = load<u8>(ptr, 1);
             let player: Player = player_map.get(id);
             if (player == null) {
@@ -392,7 +397,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             player.team = load<u8>(ptr, 13);
 
             let name_len: u8 = load<u8>(ptr, 14);
-            if (offset + 15 + name_len > buffer.length) {
+            if (15 + name_len > remaining) {
                 consoleLog("Truncated setplayer");
                 return;
             }
@@ -400,10 +405,10 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             player.name = String.UTF8.decodeUnsafe(ptr + 15, name_len, false);
 
             offset += 15 + name_len;
-        } else if (type == Netcode.ReliableType.RemovePlayer && buffer.length >= 2) {
+        } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
             player_map.delete(load<u8>(ptr, 1));
             offset += 2;
-        } else if (type == Netcode.ReliableType.PlayerKill && buffer.length >= 7) {
+        } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
             let killer_id: u8 = load<u8>(ptr, 1);
             let killee_id: u8 = load<u8>(ptr, 2);
             let killer: Player = player_map.get(killer_id);
@@ -415,11 +420,11 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 OnPlayerKilled(killer, killee);
             }
             offset += 7;
-        } else if (type == Netcode.ReliableType.Chat && buffer.length >= 4) {
+        } else if (type == Netcode.ReliableType.Chat && remaining >= 4) {
             let id: u8 = load<u8>(ptr, 1);
             let m_len: u16 = load<u16>(ptr, 2);
 
-            if (offset + 4 + m_len > buffer.length) {
+            if (4 + m_len > remaining) {
                 consoleLog("Truncated chat");
                 return;
             }
