@@ -136,6 +136,53 @@ export function RenderFrame(
 //------------------------------------------------------------------------------
 // Time Synchronization
 
+class SampleTS24 {
+    value: u32 = 0; // 24-bit
+    t: i64 = 0; // recv msec
+
+    constructor(value: u32 = 0, t: i64 = 0) {
+        this.value = value;
+        this.t = t;
+    }
+
+    TimeoutExpired(now: i64, timeout: i64): Boolean {
+        return u64(now - this.t) > timeout;
+    }
+
+    CopyFrom(sample: SampleTS24): void {
+        this.value = sample.value;
+        this.t = sample.t;
+    }
+}
+
+class WindowedMinTS24 {
+    samples: Array<SampleTS24> = new Array<SampleTS24>(3);
+
+    constructor() {
+    }
+
+    IsValid(): Boolean {
+        return this.samples[0].value != 0;
+    }
+
+    GetBest(): u32 {
+        return this.samples[0].value;
+    }
+
+    Reset(sample: SampleTS24 | null) {
+        if (!sample) {
+            sample = new SampleTS24();
+        }
+        this.samples[0].CopyFrom(sample);
+        this.samples[1].CopyFrom(sample);
+        this.samples[2].CopyFrom(sample);
+    }
+
+    Update(value: u32, t: i64, window_length: i64): void {
+
+    }
+}
+
 function OnTimeSample(recv_msec: i64, peer_ts: u32): i64 {
     // FIXME
 }
