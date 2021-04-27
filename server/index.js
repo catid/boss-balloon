@@ -68,7 +68,8 @@ class WebRTCClient {
             iceServers: ["stun:stun.l.google.com:19302"],
             // Support up to 20k clients - These UDP ports must be open in firewall of server
             portRangeBegin: 10_000,
-            portRangeEnd: 30_000
+            portRangeEnd: 30_000,
+            maxMessageSize: 1_100
         });
 
         this.setupTimeout = setTimeout(() => {

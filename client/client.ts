@@ -136,6 +136,13 @@ export function RenderFrame(
 //------------------------------------------------------------------------------
 // Time Synchronization
 
+// x, y are 24-bit counters
+// Returns true if x <= y
+function TS24_IsLessOrEqual(x: u32, y: u32): Boolean {
+    let temp: u32 = (x - y) & 0xffffff;
+    return temp < 0x800000;
+}
+
 class SampleTS24 {
     value: u32 = 0; // 24-bit
     t: i64 = 0; // recv msec
@@ -144,11 +151,9 @@ class SampleTS24 {
         this.value = value;
         this.t = t;
     }
-
     TimeoutExpired(now: i64, timeout: i64): Boolean {
         return u64(now - this.t) > timeout;
     }
-
     CopyFrom(sample: SampleTS24): void {
         this.value = sample.value;
         this.t = sample.t;
@@ -164,29 +169,75 @@ class WindowedMinTS24 {
 
     constructor() {
     }
-
     IsValid(): Boolean {
         return this.samples[0].value != 0;
     }
-
     GetBest(): u32 {
         return this.samples[0].value;
     }
-
-    Reset(sample: SampleTS24): void {
-        if (!sample) {
-            this.samples[0].Reset();
-            this.samples[1].Reset();
-            this.samples[2].Reset();
-        } else {
-            this.samples[0].CopyFrom(sample);
-            this.samples[1].CopyFrom(sample);
-            this.samples[2].CopyFrom(sample);
+    Reset(value: u32, t: i64): void {
+        for (let i: i32 = 0; i < 3; ++i) {
+            this.samples[i].value = value;
+            this.samples[i].t = t;
         }
     }
-
     Update(value: u32, t: i64, window_length: i64): void {
+        // On the first sample, new best sample, or if window length has expired:
+        if (!this.IsValid() ||
+            TS24_IsLessOrEqual(value, this.samples[0].value) ||
+            this.samples[2].TimeoutExpired(t, window_length))
+        {
+            this.Reset(value, t);
+            return;
+        }
 
+        // Insert the new value into the sorted array
+        if (TS24_IsLessOrEqual(value, this.samples[1].value)) {
+            this.samples[2].value = value;
+            this.samples[2].t = t;
+            this.samples[1].value = value;
+            this.samples[1].t = t;
+        } else if (TS24_IsLessOrEqual(value, this.samples[2].value)) {
+            this.samples[2].value = value;
+            this.samples[2].t = t;
+        }
+
+        // Expire best if it has been the best for a long time
+        if (this.samples[0].TimeoutExpired(t, window_length)) {
+            if (this.samples[1].TimeoutExpired(t, window_length)) {
+                this.samples[0].value = this.samples[2].value;
+                this.samples[0].t = this.samples[2].t;
+                this.samples[1].value = value;
+                this.samples[1].t = t;
+            } else {
+                this.samples[0].value = this.samples[1].value;
+                this.samples[0].t = this.samples[1].t;
+                this.samples[1].value = this.samples[2].value;
+                this.samples[1].t = this.samples[2].t;
+            }
+            this.samples[2].value = value;
+            this.samples[2].t = t;
+            return;
+        }
+
+        // Quarter of window has gone by without a better value - Use the second-best
+        if (this.samples[1].value == this.samples[0].value &&
+            this.samples[1].TimeoutExpired(t, window_length / 4))
+        {
+            this.samples[1].value = value;
+            this.samples[1].t = t;
+            this.samples[2].value = value;
+            this.samples[2].t = t;
+            return;
+        }
+
+        // Half the window has gone by without a better value - Use the third-best one
+        if (this.samples[2].value == this.samples[1].value &&
+            this.samples[2].TimeoutExpired(t, window_length / 2))
+        {
+            this.samples[2].value = value;
+            this.samples[2].t = t;
+        }
     }
 }
 
@@ -228,6 +279,9 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
         return;
     }
 
+    // Convert timestamp to integer with 1/4 msec (desired) precision
+    let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
+
     let offset: i32 = 0;
     while (offset < buffer.length) {
         let ptr: usize = buffer.dataStart + offset;
@@ -235,9 +289,6 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
         const type: u8 = load<u8>(ptr, 0);
 
         if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
-            // Convert timestamp to integer with 1/4 msec (desired) precision
-            let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
-
             let peer_ts: u32 = load<u16>(ptr, 1);
             peer_ts |= u32(load<u8>(ptr, 3)) << 16;
 
@@ -249,9 +300,6 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
-            // Convert timestamp to integer with 1/4 msec (desired) precision
-            let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
-
             let peer_ts: u32 = load<u16>(ptr, 1);
             peer_ts |= u32(load<u8>(ptr, 3)) << 16;
 
