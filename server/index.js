@@ -65,7 +65,10 @@ class WebRTCClient {
 
         this.conn = new node_datachannel.PeerConnection("bb", {
             enableIceTcp: false,
-            iceServers: ["stun:stun.l.google.com:19302"]
+            iceServers: ["stun:stun.l.google.com:19302"],
+            // Support up to 20k clients - These UDP ports must be open in firewall of server
+            portRangeBegin: 10_000,
+            portRangeEnd: 30_000
         });
 
         this.setupTimeout = setTimeout(() => {
