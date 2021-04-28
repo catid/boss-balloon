@@ -102,29 +102,41 @@ function OnChat(player: Player, m: string): void {
 
 
 //------------------------------------------------------------------------------
-// Render
+// Time units
 
 // For netcode we use timestamps relative to the connection open time, because
 // we waste fewer mantissa bits on useless huge values.
 let netcode_start_msec: f64 = 0;
-let last_msec: f64 = 0;
+
+// Convert to internal integer time units from floating point performance.now() units
+function MsecToTime(msec: f64): i64 {
+    return i64((msec - netcode_start_msec) * 4.0);
+}
+
+const kMinDeltaWindowLength = 4 * 10_0000; // 10 seconds in our time units
+
+
+//------------------------------------------------------------------------------
+// Render
+
+let render_last_msec: f64 = 0;
 
 export function RenderFrame(
     now_msec: f64,
     finger_x: i32, finger_y: i32,
     canvas_w: i32, canvas_h: i32): void
 {
-    let dt: f64 = now_msec - last_msec;
+    let dt: f64 = now_msec - render_last_msec;
     if (dt > 5000) {
         dt = 0;
     }
-    last_msec = now_msec;
+    render_last_msec = now_msec;
 
     RenderContext.I.UpdateViewport(canvas_w, canvas_h);
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = i64((now_msec - netcode_start_msec) * 4.0);
+    let t: i64 = MsecToTime(now_msec);
 
     //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
 
@@ -143,9 +155,11 @@ function TS24_IsLessOrEqual(x: u32, y: u32): Boolean {
     return temp < 0x800000;
 }
 
+function TS23ExpandFromTruncatedWithBias(full: i64, trunc: u32)
+
 class SampleTS24 {
     value: u32 = 0; // 24-bit
-    t: i64 = 0; // recv msec
+    t: i64 = 0; // time in any units
 
     constructor(value: u32 = 0, t: i64 = 0) {
         this.value = value;
@@ -229,20 +243,65 @@ class WindowedMinTS24 {
     }
 }
 
-function OnTimeSample(recv_msec: i64, peer_ts: u32): i64 {
-    // FIXME
+let min_delta_calc_ts24: WindowedMinTS24 = new WindowedMinTS24();
+let peer_min_delta_ts24: u32 = 0;
+let clock_offset_ts23: i32 = 0;
+
+function RecalculateClockOffset(): void {
+    // min(OWD_i) + ClockDelta(L-R)_i
+    let minRecvDelta_TS24: u32 = min_delta_calc_ts24.GetBest();
+
+    // min(OWD_j) + ClockDelta(R-L)_j
+    let minSendDelta_TS24: u32 = peer_min_delta_ts24;
+
+    // Standard assumption: min(OWD_i) = min(OWD_j)
+    // Given: ClockDelta(R-L)_j = -ClockDelta(L-R)_i
+    // ClockDelta(R-L) ~= (ClockDelta(R-L)_j - ClockDelta(L-R)_i) / 2
+    // Note we only get 23 valid bits not 24 out of this calculation.
+    clock_offset_ts23 = ((minSendDelta_TS24 - minRecvDelta_TS24) >> 1) & 0x7fffff;
 }
 
-function OnTimeMinDelta(recv_msec: i64, min_delta: u32): i64 {
-    // FIXME
+function OnTimeSample(t: i64, peer_ts: u32): i64 {
+    // OWD_i + ClockDelta(L-R)_i = Local Receive Time - Remote Send Time
+    const delta = u32((t - peer_ts) & 0xffffff);
+
+    min_delta_calc_ts24.Update(delta, t, kMinDeltaWindowLength);
+
+    RecalculateClockOffset();
 }
 
-function PeerToLocal(recv_msec: i64, peer_ts: u32): i64 {
-    // FIXME
+function OnTimeMinDelta(t: i64, min_delta: u32): i64 {
+    // FIXME peer_min_delta
 }
 
-function LocalToPeer(t_msec: i64): u32 {
-    // FIXME
+// Takes in a 23-bit timestamp in peer's clock domain,
+// and produces a 23-bit timestamp in local clock domain.
+function PeerToLocalTime_TS23(t: i64, peer_ts23: u32): u32 {
+    
+}
+
+// Produces a 23-bit timestamp in peer's clock domain.
+function LocalToPeerTime_TS23(t: i64): u32 {
+    return u32(t + clock_offset_ts23) & 0x7fffff;
+}
+
+// Should be called once a second or so
+export function SendTimeSync(send_msec: f64): void {
+    let min_delta: u32 = min_delta_calc_ts24.GetBest();
+    let min_delta_trunc: u32 = u32(min_delta & 0xffffff);
+
+    // Convert timestamp to integer with 1/4 msec (desired) precision
+    let t: i64 = MsecToTime(send_msec);
+    let t_trunc: u32 = u32(t & 0xffffff);
+
+    let buffer: Uint8Array = new Uint8Array(7);
+    let ptr: usize = buffer.dataStart;
+
+    store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
+    Netcode.Store24(ptr, 1, t_trunc);
+    Netcode.Store24(ptr, 4, min_delta_trunc);
+
+    sendUnreliable(buffer);
 }
 
 
@@ -268,7 +327,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = i64((recv_msec - netcode_start_msec) * 4.0);
+    let t: i64 = MsecToTime(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -277,22 +336,19 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
         const type: u8 = load<u8>(ptr, 0);
 
         if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
-            let peer_ts: u32 = load<u16>(ptr, 1);
-            peer_ts |= u32(load<u8>(ptr, 3)) << 16;
+            let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
-            let min_delta: u32 = load<u16>(ptr, 4);
-            min_delta |= u32(load<u8>(ptr, 6)) << 16;
+            let min_delta: u32 = Netcode.Load24(ptr, 4);
 
             OnTimeSample(t, peer_ts);
             OnTimeMinDelta(t, min_delta);
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
-            let peer_ts: u32 = load<u16>(ptr, 1);
-            peer_ts |= u32(load<u8>(ptr, 3)) << 16;
+            let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
             OnTimeSample(t, peer_ts);
-            t = PeerToLocal(t, peer_ts);
+            t = ServerToClientTime(t, peer_ts);
 
             const player_count: i32 = load<u8>(ptr, 4);
             const expected_bytes: i32 = 5 + player_count * 8; // 64 bits per player
@@ -322,8 +378,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 }
 
-// type e.g. Netcode.ReliableType.ClientRegister
-export function SendClientRegisterOrLogin(type: u8, name: string, password: string): i32 {
+export function SendClientLogin(name: string, password: string): i32 {
     let name_len: i32 = String.UTF8.byteLength(name, false);
     let password_len: i32 = String.UTF8.byteLength(password, false);
 
@@ -337,7 +392,7 @@ export function SendClientRegisterOrLogin(type: u8, name: string, password: stri
     let buffer: Uint8Array = new Uint8Array(3 + name_len + password_len);
     let ptr: usize = buffer.dataStart;
 
-    store<u8>(ptr, type, 0);
+    store<u8>(ptr, Netcode.ReliableType.ClientLogin, 0);
     store<u8>(ptr, u8(name_len), 1);
 
     // If dataStart stops working we can use this instead:

@@ -71,11 +71,6 @@ export enum UnreliableType {
     Server is assigning the client's info.
 
 
-    [ReliableType.ClientRegister(1 byte)]
-    [Name Length(1 byte)] [Name(NL bytes)]
-    [Password Length(1 byte)] [Password(PL bytes)]
-    Client is registering a name.
-
     [ReliableType.ClientLogin(1 byte)]
     [Name Length(1 byte)] [Name(NL bytes)]
     [Password Length(1 byte)] [Password(PL bytes)]
@@ -114,10 +109,9 @@ export enum UnreliableType {
 export enum ReliableType {
     SetId = 0,
 
-    ClientRegister = 10,
-    ClientLogin = 11,
-    ServerLoginGood = 15,
-    ServerLoginBad = 16,
+    ClientLogin = 10,
+    ServerLoginGood = 11,
+    ServerLoginBad = 12,
 
     SetPlayer = 20,
     RemovePlayer = 21,
@@ -125,6 +119,21 @@ export enum ReliableType {
 
     ChatRequest = 30,
     Chat = 31,
+}
+
+
+//------------------------------------------------------------------------------
+// Tools
+
+export function Store24(ptr: usize, offset: usize, ts24: u32): void {
+    store<u16>(ptr + offset, u16(ts24));
+    store<u8>(ptr + offset + 2, u8(ts24 >> 16));
+}
+
+export function Load24(ptr: usize, offset: usize): u32 {
+    let ts24: u32 = load<u16>(ptr + offset);
+    ts24 |= u32(load<u8>(ptr + offset + 2)) << 16;
+    return ts24;
 }
 
 
