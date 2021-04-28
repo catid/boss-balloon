@@ -100,7 +100,7 @@ function OnPlayerKilled(killer: Player, killee: Player): void {
 }
 
 function OnChat(player: Player, m: string): void {
-
+    consoleLog("Chat: " + m.toString());
 }
 
 
@@ -143,6 +143,11 @@ export function OnConnectionOpen(now_msec: f64): void {
     player_map.clear();
     SelfId = -1;
     TimeSync.Reset();
+
+    let chat = Netcode.MakeChatRequest("Hello World");
+    if (chat != null) {
+        sendReliable(chat);
+    }
 }
 
 export function OnReliableSendTimer(): void {
@@ -179,18 +184,32 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
         if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
-
             let min_delta: u32 = Netcode.Load24(ptr, 4);
 
             TimeSync.OnTimeSample(t, peer_ts);
             TimeSync.OnTimeMinDelta(t, min_delta);
+            consoleLog("Delta: " + TimeSync.clock_offset_ts23.toString());
+
+            sendUnreliable(Netcode.MakeTimeSyncPong(peer_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
+
+            offset += 7;
+        } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
+            let ping_ts: u32 = Netcode.Load24(ptr, 1);
+            let pong_ts: u32 = Netcode.Load24(ptr, 4);
+
+            let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
+            let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
+
+            consoleLog("Ping T = " + ping.toString());
+            consoleLog("Pong T = " + pong.toString());
+            consoleLog("Recv T = " + t.toString());
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
             TimeSync.OnTimeSample(t, peer_ts);
-            t = TimeSync.PeerToLocalTime_TS23(t, peer_ts);
+            t = TimeSync.PeerToLocalTime_FromTS23(t, peer_ts);
 
             const player_count: i32 = load<u8>(ptr, 4);
             const expected_bytes: i32 = 5 + player_count * 8; // 64 bits per player
@@ -204,8 +223,8 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             for (let i: i32 = 0; i < player_count; ++i) {
                 let player_id: u8 = buffer[offset];
-                let player: Player = player_map.get(player_id);
-                if (player != null) {
+                if (player_map.has(player_id)) {
+                    let player: Player = player_map.get(player_id);
                     player.LastPositionMessage.SetFromBuffer(t, buffer, offset);
                 }
 
@@ -252,11 +271,13 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             offset += 3 + len;
         } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
             let id: u8 = load<u8>(ptr, 1);
-            let player: Player = player_map.get(id);
-            if (player == null) {
+            let player: Player | null = null;
+            if (player_map.has(id)) {
                 player = new Player();
                 player_map.set(id, player);
                 player.id = id;
+            } else {
+                player = player_map.get(id);
             }
 
             player.score = load<u16>(ptr, 2);
@@ -280,9 +301,9 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
         } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
             let killer_id: u8 = load<u8>(ptr, 1);
             let killee_id: u8 = load<u8>(ptr, 2);
-            let killer: Player = player_map.get(killer_id);
-            let killee: Player = player_map.get(killee_id);
-            if (killer != null && killee != null) {
+            if (player_map.has(killer_id) && player_map.has(killee_id)) {
+                let killer: Player = player_map.get(killer_id);
+                let killee: Player = player_map.get(killee_id);
                 killer.score = load<u16>(ptr, 3);
                 killee.score = load<u16>(ptr, 5);
 
@@ -298,8 +319,8 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 return;
             }
 
-            let player: Player = player_map.get(id);
-            if (player != null) {
+            if (player_map.has(id)) {
+                let player: Player = player_map.get(id);
                 let m: string = String.UTF8.decodeUnsafe(ptr + 4, m_len, false);
 
                 OnChat(player, m);
@@ -337,4 +358,6 @@ export function SendChatRequest(m: string): i32 {
 
 export function SendTimeSync(send_msec: f64): void {
     sendUnreliable(TimeSync.MakeTimeSync(send_msec));
+
+    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }

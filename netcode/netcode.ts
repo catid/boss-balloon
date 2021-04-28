@@ -16,7 +16,10 @@ export const kMaxPacketBytes: i32 = 1100;
     [UnreliableType.TimeSync(1 byte)] [Local-24bit-SendTimestamp(3 bytes)] [Remote-24bit-MinDelta(3 bytes)]
     Sent once a second by both sides to establish time sync.
 
-    [UnreliableType.ClientPosition(1 byte)] [Client-24bit-SendTimestamp(3 bytes)] [x(2 bytes)] [y(2 bytes)]
+    [UnreliableType.TimeSyncPong(1 byte)] [Timestamp from sender(3 bytes)] [Remote-23bit-SendTimestamp(3 bytes)]
+    Reply to TimeSync.  Used to test the time sync code.
+
+    [UnreliableType.ClientPosition(1 byte)] [Client-23bit-SendTimestamp(3 bytes)] [x(2 bytes)] [y(2 bytes)]
     Sent by client to request a position change.
     We use client time in the message to improve the time sync dataset.
     Finger position relative to center: ((x or y) - 32768) / 32768 = -1..1
@@ -58,8 +61,9 @@ export const kMaxPacketBytes: i32 = 1100;
 
 export enum UnreliableType {
     TimeSync = 0,
-    ClientPosition = 1,
-    ServerPosition = 2,
+    TimeSyncPong = 1,
+    ClientPosition = 2,
+    ServerPosition = 3,
 }
 
 /*
@@ -290,6 +294,9 @@ class WindowedMinTS24 {
     samples: Array<SampleTS24> = new Array<SampleTS24>(3);
 
     constructor() {
+        for (let i: i32 = 0; i < 3; ++i) {
+            this.samples[i] = new SampleTS24();
+        }
     }
     IsValid(): bool {
         return this.samples[0].value != 0;
@@ -395,19 +402,34 @@ export class TimeSync {
     }
     
     // Takes in a 23-bit timestamp in peer's clock domain,
-    // and produces a 23-bit timestamp in local clock domain.
-    PeerToLocalTime_TS23(t: u64, peer_ts23: u32): u64 {
+    // and produces a full 64-bit timestamp in local clock domain.
+    PeerToLocalTime_FromTS23(t: u64, peer_ts23: u32): u64 {
         // Offset = Remote - Local
         const local_ts23: u32 = peer_ts23 - this.clock_offset_ts23;
         return TS23ExpandFromTruncatedWithBias(t, local_ts23 & 0x7fffff);
     }
-    
+
     // Produces a 23-bit timestamp in peer's clock domain.
-    LocalToPeerTime_TS23(t: u64): u32 {
+    LocalToPeerTime_ToTS23(t: u64): u32 {
         return u32(t + this.clock_offset_ts23) & 0x7fffff;
     }
 
+    // Takes in a full 64-bit timestamp in local clock domain,
+    // and produces a truncated 23-bit timestamp in local clock domain.
+    TruncateLocalTime_ToTS23(t: u64): u32 {
+        return u32(t) & 0x7fffff;
+    }
+
+    // Takes in a 23-bit timestamp in local clock domain,
+    // and produces a full 64-bit timestamp in local clock domain.
+    ExpandLocalTime_FromTS23(t: u64, local_ts23: u32): u64 {
+        return TS23ExpandFromTruncatedWithBias(t, local_ts23 & 0x7fffff);
+    }
+
     MakeTimeSync(send_msec: f64): Uint8Array {
+        let buffer: Uint8Array = new Uint8Array(7);
+        let ptr: usize = buffer.dataStart;
+
         let min_delta: u32 = this.min_delta_calc_ts24.GetBest();
         let min_delta_trunc: u32 = u32(min_delta & 0xffffff);
     
@@ -415,15 +437,29 @@ export class TimeSync {
         let t: u64 = MsecToTime(send_msec);
         let t_trunc: u32 = u32(t & 0xffffff);
     
-        let buffer: Uint8Array = new Uint8Array(7);
-        let ptr: usize = buffer.dataStart;
-    
         store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
         Netcode.Store24(ptr, 1, t_trunc);
         Netcode.Store24(ptr, 4, min_delta_trunc);
 
         return buffer;
     }
+}
+
+
+//------------------------------------------------------------------------------
+// Common Serializers
+
+// peer_ping_ts24: Taken from TimeSync received message.
+// peer_pong_ts23: Local receive time converted to 23-bit remote timestamp.
+export function MakeTimeSyncPong(peer_ping_ts24: u32, peer_pong_ts23: u32): Uint8Array {
+    let buffer: Uint8Array = new Uint8Array(7);
+    let ptr: usize = buffer.dataStart;
+
+    store<u8>(ptr, Netcode.UnreliableType.TimeSyncPong, 0);
+    Store24(ptr, 1, peer_ping_ts24);
+    Store24(ptr, 4, peer_pong_ts23);
+
+    return buffer;
 }
 
 
@@ -496,7 +532,7 @@ export function MakeClientLogin(name: string, password: string): Uint8Array | nu
 //------------------------------------------------------------------------------
 // Server Serializer
 
-export function MakeSetId(id: u8): Uint8Array | null {
+export function MakeSetId(id: u8): Uint8Array {
     let buffer: Uint8Array = new Uint8Array(2);
     let ptr: usize = buffer.dataStart;
 
@@ -506,7 +542,7 @@ export function MakeSetId(id: u8): Uint8Array | null {
     return buffer;
 }
 
-export function MakeServerLoginGood(): Uint8Array | null {
+export function MakeServerLoginGood(): Uint8Array {
     let buffer: Uint8Array = new Uint8Array(1);
     let ptr: usize = buffer.dataStart;
 
@@ -573,7 +609,7 @@ export function MakeSetPlayer(
     return buffer;
 }
 
-export function MakeRemovePlayer(id: u8): Uint8Array | null {
+export function MakeRemovePlayer(id: u8): Uint8Array {
     let buffer: Uint8Array = new Uint8Array(2);
     let ptr: usize = buffer.dataStart;
 
@@ -583,7 +619,7 @@ export function MakeRemovePlayer(id: u8): Uint8Array | null {
     return buffer;
 }
 
-export function MakePlayerKill(killer_id: u8, killee_id: u8, killer_score: u16, killee_score: u16): Uint8Array | null {
+export function MakePlayerKill(killer_id: u8, killee_id: u8, killer_score: u16, killee_score: u16): Uint8Array {
     let buffer: Uint8Array = new Uint8Array(7);
     let ptr: usize = buffer.dataStart;
 

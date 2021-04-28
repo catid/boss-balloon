@@ -26,6 +26,8 @@ let webrtc_unreliable = null;
 let webrtc_reliable = null;
 let ws_conn = null;
 let webrtc_dc_count = 0;
+let syncTimer = null;
+let reliableSendTimer = null;
 
 function StopWebsocket() {
     if (ws_conn != null) {
@@ -37,23 +39,23 @@ function StopWebsocket() {
 function OnConnectionOpen() {
     wasmExports.OnConnectionOpen(performance.now());
 
-    this.syncTimer = setInterval(() => {
+    syncTimer = setInterval(() => {
         wasmExports.SendTimeSync(performance.now());
     }, 1_000);
 
-    this.reliableSendTimer = setInterval(() => {
+    reliableSendTimer = setInterval(() => {
         wasmExports.OnReliableSendTimer();
     }, 100);
 }
 
 function StopWebRTC() {
-    if (this.syncTimer != null) {
-        clearInterval(this.syncTimer);
-        this.syncTimer= null;
+    if (syncTimer != null) {
+        clearInterval(syncTimer);
+        syncTimer= null;
     }
-    if (this.reliableSendTimer != null) {
-        clearInterval(this.reliableSendTimer);
-        this.reliableSendTimer= null;
+    if (reliableSendTimer != null) {
+        clearInterval(reliableSendTimer);
+        reliableSendTimer= null;
     }
     if (webrtc_unreliable != null) {
         webrtc_unreliable.close();

@@ -175,19 +175,39 @@ class WebRTCClient {
                 }
 
                 this.syncTimer = setInterval(() => {
-                    wasmExports.SendTimeSync(this.client, performance.now());
+                    if (this.client != null) {
+                        wasmExports.SendTimeSync(this.client, performance.now());
+                    }
                 }, 1_000);
             
                 this.reliableSendTimer = setInterval(() => {
-                    wasmExports.OnReliableSendTimer(this.client);
+                    if (this.client != null) {
+                        wasmExports.OnReliableSendTimer(this.client);
+                    }
                 }, 100);
 
                 // Start accepting messages
                 this.dc_unreliable.onMessage((msg) => {
-                    wasmExports.OnUnreliableData(this.client, performance.now(), msg);
+                    if (this.client != null) {
+                        // Make a copy of the buffer into wasm memory
+                        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, msg));
+
+                        wasmExports.OnUnreliableData(this.client, performance.now(), dataRef);
+
+                        // Release resource
+                        wasmExports.__unpin(dataRef);
+                    }
                 });
                 this.dc_reliable.onMessage((msg) => {
-                    wasmExports.OnReliableData(this.client, msg);
+                    if (this.client != null) {
+                        // Make a copy of the buffer into wasm memory
+                        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, msg));
+
+                        wasmExports.OnReliableData(this.client, dataRef);
+
+                        // Release resource
+                        wasmExports.__unpin(dataRef);
+                    }
                 });
             }
         });
