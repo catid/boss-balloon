@@ -34,7 +34,27 @@ function StopWebsocket() {
     }
 }
 
+function OnConnectionOpen() {
+    wasmExports.OnConnectionOpen(performance.now());
+
+    this.syncTimer = setInterval(() => {
+        wasmExports.SendTimeSync(performance.now());
+    }, 1_000);
+
+    this.reliableSendTimer = setInterval(() => {
+        wasmExports.OnReliableSendTimer();
+    }, 100);
+}
+
 function StopWebRTC() {
+    if (this.syncTimer != null) {
+        clearInterval(this.syncTimer);
+        this.syncTimer= null;
+    }
+    if (this.reliableSendTimer != null) {
+        clearInterval(this.reliableSendTimer);
+        this.reliableSendTimer= null;
+    }
     if (webrtc_unreliable != null) {
         webrtc_unreliable.close();
         webrtc_unreliable = null;
@@ -135,7 +155,7 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onopen:', webrtc_reliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports.OnConnectionOpen(performance.now());
+            OnConnectionOpen();
         }
     };
     webrtc_reliable.onerror = ev => {

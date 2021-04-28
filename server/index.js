@@ -21,6 +21,7 @@ const node_datachannel = require('node-datachannel');
 const { performance } = require('perf_hooks');
 
 let wasmModule;
+let wasmExports;
 
 
 //------------------------------------------------------------------------------
@@ -165,20 +166,28 @@ class WebRTCClient {
                 this.connected = true;
                 clearTimeout(this.setupTimeout);
                 this.setupTimeout = null;
-    
-                this.client = wasmModule.exports.__pin(wasmModule.exports.OnConnectionOpen(this.local_id, performance.now()));
+
+                this.client = wasmExports.__pin(wasmExports.OnConnectionOpen(this.local_id, performance.now()));
                 if (this.client == null) {
                     console.error("OnConnectionOpen failed");
                     this.Close();
                     return;
                 }
 
+                this.syncTimer = setInterval(() => {
+                    wasmExports.SendTimeSync(this.client, performance.now());
+                }, 1_000);
+            
+                this.reliableSendTimer = setInterval(() => {
+                    wasmExports.OnReliableSendTimer(this.client);
+                }, 100);
+
                 // Start accepting messages
                 this.dc_unreliable.onMessage((msg) => {
-                    wasmModule.exports.OnUnreliableData(this.client, performance.now(), msg);
+                    wasmExports.OnUnreliableData(this.client, performance.now(), msg);
                 });
                 this.dc_reliable.onMessage((msg) => {
-                    wasmModule.exports.OnReliableData(this.client, msg);
+                    wasmExports.OnReliableData(this.client, msg);
                 });
             }
         });
@@ -189,13 +198,21 @@ class WebRTCClient {
 
     Close() {
         this.connected = false;
+        if (this.syncTimer != null) {
+            clearInterval(this.syncTimer);
+            this.syncTimer= null;
+        }
+        if (this.reliableSendTimer != null) {
+            clearInterval(this.reliableSendTimer);
+            this.reliableSendTimer= null;
+        }
         if (this.setupTimeout != null) {
             clearTimeout(this.setupTimeout);
             this.setupTimeout = null;
         }
         if (this.client != null) {
-            wasmModule.exports.OnConnectionClose(this.client);
-            wasmModule.exports.__unpin(this.client);
+            wasmExports.OnConnectionClose(this.client);
+            wasmExports.__unpin(this.client);
             this.client = null;
         }
         if (this.dc_unreliable != null) {
@@ -342,7 +359,7 @@ const wasmImports = {
     server: {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
-            var copy = wasmModule.exports.__getString(m);
+            var copy = wasmExports.__getString(m);
             setTimeout(() => {
                 console.log(copy);
             }, 50);
@@ -358,7 +375,7 @@ const wasmImports = {
                 return;
             }
 
-            client.dc_reliable.sendMessageBinary(wasmModule.exports.__getUint8ArrayView(buffer));
+            client.dc_reliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
         },
         sendUnreliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
@@ -371,10 +388,10 @@ const wasmImports = {
                 return;
             }
 
-            client.dc_unreliable.sendMessageBinary(wasmModule.exports.__getUint8ArrayView(buffer));
+            client.dc_unreliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
         },
         broadcastReliable: (exclude_id, buffer) => {
-            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+            var resultArray = wasmExports.__getUint8ArrayView(buffer);
 
             for (let client of webrtc_local_map.values()) {
                 if (client == null) {
@@ -391,7 +408,7 @@ const wasmImports = {
             }
         },
         broadcastUnreliable: (exclude_id, buffer) => {
-            var resultArray = wasmModule.exports.__getUint8ArrayView(buffer);
+            var resultArray = wasmExports.__getUint8ArrayView(buffer);
 
             for (let client of webrtc_local_map.values()) {
                 if (client == null) {
@@ -420,13 +437,14 @@ var importObject = {
 };
 
 wasmModule = loader.instantiateSync(fs.readFileSync(__dirname + "/server.wasm"), importObject);
+wasmExports = wasmModule.exports;
 
 
 //------------------------------------------------------------------------------
 // Authoritative Physics Loop
 
 function NextLoop() {
-    wasmModule.exports.OnTick(performance.now());
+    wasmExports.OnTick(performance.now());
 
     setTimeout(NextLoop, 20_000);
 }

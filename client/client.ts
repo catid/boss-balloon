@@ -15,6 +15,9 @@ declare function serverLoginBad(reason: string): void;
 
 export const UINT8ARRAY_ID = idof<Uint8Array>();
 
+let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
+let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
+
 
 //------------------------------------------------------------------------------
 // Initialization
@@ -32,7 +35,7 @@ let SelfId: i32 = -1;
 class PositionMessage {
     valid: bool = false;
 
-    t: i64;
+    t: u64;
 
     x: u16;
     y: u16;
@@ -45,7 +48,7 @@ class PositionMessage {
     constructor() {
     }
 
-    SetFromBuffer(t: i64, buffer: Uint8Array, offset: i32): void {
+    SetFromBuffer(t: u64, buffer: Uint8Array, offset: i32): void {
         this.valid = true;
 
         this.t = t;
@@ -102,21 +105,6 @@ function OnChat(player: Player, m: string): void {
 
 
 //------------------------------------------------------------------------------
-// Time units
-
-// For netcode we use timestamps relative to the connection open time, because
-// we waste fewer mantissa bits on useless huge values.
-let netcode_start_msec: f64 = 0;
-
-// Convert to internal integer time units from floating point performance.now() units
-function MsecToTime(msec: f64): i64 {
-    return i64((msec - netcode_start_msec) * 4.0);
-}
-
-const kMinDeltaWindowLength = 4 * 10_0000; // 10 seconds in our time units
-
-
-//------------------------------------------------------------------------------
 // Render
 
 let render_last_msec: f64 = 0;
@@ -136,7 +124,7 @@ export function RenderFrame(
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = MsecToTime(now_msec);
+    let t: u64 = Netcode.MsecToTime(now_msec);
 
     //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
 
@@ -146,179 +134,33 @@ export function RenderFrame(
 
 
 //------------------------------------------------------------------------------
-// Time Synchronization
-
-// x, y are 24-bit counters
-// Returns true if x <= y
-function TS24_IsLessOrEqual(x: u32, y: u32): Boolean {
-    let temp: u32 = (x - y) & 0xffffff;
-    return temp < 0x800000;
-}
-
-function TS23ExpandFromTruncatedWithBias(full: i64, trunc: u32)
-
-class SampleTS24 {
-    value: u32 = 0; // 24-bit
-    t: i64 = 0; // time in any units
-
-    constructor(value: u32 = 0, t: i64 = 0) {
-        this.value = value;
-        this.t = t;
-    }
-    TimeoutExpired(now: i64, timeout: i64): Boolean {
-        return u64(now - this.t) > timeout;
-    }
-    CopyFrom(sample: SampleTS24): void {
-        this.value = sample.value;
-        this.t = sample.t;
-    }
-    Set(value: u32 = 0, t: i64 = 0): void {
-        this.value = value;
-        this.t = t;
-    }
-}
-
-class WindowedMinTS24 {
-    samples: Array<SampleTS24> = new Array<SampleTS24>(3);
-
-    constructor() {
-    }
-    IsValid(): Boolean {
-        return this.samples[0].value != 0;
-    }
-    GetBest(): u32 {
-        return this.samples[0].value;
-    }
-    Reset(value: u32 = 0, t: i64 = 0): void {
-        for (let i: i32 = 0; i < 3; ++i) {
-            this.samples[i].Set(value, t);
-        }
-    }
-    Update(value: u32, t: i64, window_length: i64): void {
-        // On the first sample, new best sample, or if window length has expired:
-        if (!this.IsValid() ||
-            TS24_IsLessOrEqual(value, this.samples[0].value) ||
-            this.samples[2].TimeoutExpired(t, window_length))
-        {
-            this.Reset(value, t);
-            return;
-        }
-
-        // Insert the new value into the sorted array
-        if (TS24_IsLessOrEqual(value, this.samples[1].value)) {
-            this.samples[2].Set(value, t);
-            this.samples[1].Set(value, t);
-        } else if (TS24_IsLessOrEqual(value, this.samples[2].value)) {
-            this.samples[2].Set(value, t);
-        }
-
-        // Expire best if it has been the best for a long time
-        if (this.samples[0].TimeoutExpired(t, window_length)) {
-            if (this.samples[1].TimeoutExpired(t, window_length)) {
-                this.samples[0].CopyFrom(this.samples[2]);
-                this.samples[1].Set(value, t);
-            } else {
-                this.samples[0].CopyFrom(this.samples[1]);
-                this.samples[1].CopyFrom(this.samples[2]);
-            }
-            this.samples[2].Set(value, t);
-            return;
-        }
-
-        // Quarter of window has gone by without a better value - Use the second-best
-        if (this.samples[1].value == this.samples[0].value &&
-            this.samples[1].TimeoutExpired(t, window_length / 4))
-        {
-            this.samples[1].Set(value, t);
-            this.samples[2].Set(value, t);
-            return;
-        }
-
-        // Half the window has gone by without a better value - Use the third-best one
-        if (this.samples[2].value == this.samples[1].value &&
-            this.samples[2].TimeoutExpired(t, window_length / 2))
-        {
-            this.samples[2].Set(value, t);
-        }
-    }
-}
-
-let min_delta_calc_ts24: WindowedMinTS24 = new WindowedMinTS24();
-let peer_min_delta_ts24: u32 = 0;
-let clock_offset_ts23: i32 = 0;
-
-function RecalculateClockOffset(): void {
-    // min(OWD_i) + ClockDelta(L-R)_i
-    let minRecvDelta_TS24: u32 = min_delta_calc_ts24.GetBest();
-
-    // min(OWD_j) + ClockDelta(R-L)_j
-    let minSendDelta_TS24: u32 = peer_min_delta_ts24;
-
-    // Standard assumption: min(OWD_i) = min(OWD_j)
-    // Given: ClockDelta(R-L)_j = -ClockDelta(L-R)_i
-    // ClockDelta(R-L) ~= (ClockDelta(R-L)_j - ClockDelta(L-R)_i) / 2
-    // Note we only get 23 valid bits not 24 out of this calculation.
-    clock_offset_ts23 = ((minSendDelta_TS24 - minRecvDelta_TS24) >> 1) & 0x7fffff;
-}
-
-function OnTimeSample(t: i64, peer_ts: u32): i64 {
-    // OWD_i + ClockDelta(L-R)_i = Local Receive Time - Remote Send Time
-    const delta = u32((t - peer_ts) & 0xffffff);
-
-    min_delta_calc_ts24.Update(delta, t, kMinDeltaWindowLength);
-
-    RecalculateClockOffset();
-}
-
-function OnTimeMinDelta(t: i64, min_delta: u32): i64 {
-    // FIXME peer_min_delta
-}
-
-// Takes in a 23-bit timestamp in peer's clock domain,
-// and produces a 23-bit timestamp in local clock domain.
-function PeerToLocalTime_TS23(t: i64, peer_ts23: u32): u32 {
-    
-}
-
-// Produces a 23-bit timestamp in peer's clock domain.
-function LocalToPeerTime_TS23(t: i64): u32 {
-    return u32(t + clock_offset_ts23) & 0x7fffff;
-}
-
-// Should be called once a second or so
-export function SendTimeSync(send_msec: f64): void {
-    let min_delta: u32 = min_delta_calc_ts24.GetBest();
-    let min_delta_trunc: u32 = u32(min_delta & 0xffffff);
-
-    // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = MsecToTime(send_msec);
-    let t_trunc: u32 = u32(t & 0xffffff);
-
-    let buffer: Uint8Array = new Uint8Array(7);
-    let ptr: usize = buffer.dataStart;
-
-    store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
-    Netcode.Store24(ptr, 1, t_trunc);
-    Netcode.Store24(ptr, 4, min_delta_trunc);
-
-    sendUnreliable(buffer);
-}
-
-
-//------------------------------------------------------------------------------
 // Connection
 
 export function OnConnectionOpen(now_msec: f64): void {
     consoleLog("UDP link up");
 
-    netcode_start_msec = now_msec;
+    Netcode.SetStartMsec(now_msec);
     player_map.clear();
     SelfId = -1;
+    TimeSync.Reset();
+}
+
+export function OnReliableSendTimer(): void {
+    let buffer : Uint8Array | null = MessageCombiner.PopNextDatagram();
+    if (buffer == null) {
+        return;
+    }
+
+    sendReliable(buffer);
 }
 
 export function OnConnectionClose(): void {
     consoleLog("UDP link down");
 }
+
+
+//------------------------------------------------------------------------------
+// Message Deserializers
 
 export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): void {
     if (buffer.length < 1) {
@@ -327,7 +169,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: i64 = MsecToTime(recv_msec);
+    let t: u64 = Netcode.MsecToTime(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -340,15 +182,15 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             let min_delta: u32 = Netcode.Load24(ptr, 4);
 
-            OnTimeSample(t, peer_ts);
-            OnTimeMinDelta(t, min_delta);
+            TimeSync.OnTimeSample(t, peer_ts);
+            TimeSync.OnTimeMinDelta(t, min_delta);
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
-            OnTimeSample(t, peer_ts);
-            t = ServerToClientTime(t, peer_ts);
+            TimeSync.OnTimeSample(t, peer_ts);
+            t = TimeSync.PeerToLocalTime_TS23(t, peer_ts);
 
             const player_count: i32 = load<u8>(ptr, 4);
             const expected_bytes: i32 = 5 + player_count * 8; // 64 bits per player
@@ -376,70 +218,6 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             return;
         }
     }
-}
-
-export function SendClientLogin(name: string, password: string): i32 {
-    let name_len: i32 = String.UTF8.byteLength(name, false);
-    let password_len: i32 = String.UTF8.byteLength(password, false);
-
-    if (name_len <= 0 || name_len >= 256) {
-        return -1;
-    }
-    if (password_len <= 0 || password_len >= 256) {
-        return -1;
-    }
-
-    let buffer: Uint8Array = new Uint8Array(3 + name_len + password_len);
-    let ptr: usize = buffer.dataStart;
-
-    store<u8>(ptr, Netcode.ReliableType.ClientLogin, 0);
-    store<u8>(ptr, u8(name_len), 1);
-
-    // If dataStart stops working we can use this instead:
-    // changetype<usize>(buffer) + buffer.byteOffset
-
-    String.UTF8.encodeUnsafe(
-        changetype<usize>(name),
-        name.length,
-        ptr + 2,
-        false);
-
-    store<u8>(ptr + name_len, u8(password_len), 2);
-
-    String.UTF8.encodeUnsafe(
-        changetype<usize>(password),
-        password.length,
-        ptr + 3 + name_len,
-        false);
-
-    sendReliable(buffer);
-    return 0;
-}
-
-export function SendChatRequest(m: string): i32 {
-    let m_len: i32 = String.UTF8.byteLength(m, false);
-
-    if (m_len <= 0 || m_len >= 512) {
-        return -1;
-    }
-
-    let buffer: Uint8Array = new Uint8Array(3 + m_len);
-    let ptr: usize = buffer.dataStart;
-
-    store<u8>(ptr, Netcode.ReliableType.ChatRequest, 0);
-    store<u16>(ptr, u16(m_len), 1);
-
-    // If dataStart stops working we can use this instead:
-    // changetype<usize>(buffer) + buffer.byteOffset
-
-    String.UTF8.encodeUnsafe(
-        changetype<usize>(m),
-        m.length,
-        ptr + 3,
-        false);
-
-    sendReliable(buffer);
-    return 0;
 }
 
 export function OnConnectionReliableData(buffer: Uint8Array): void {
@@ -511,7 +289,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 OnPlayerKilled(killer, killee);
             }
             offset += 7;
-        } else if (type == Netcode.ReliableType.Chat && remaining >= 4) {
+        } else if (type == Netcode.ReliableType.Chat && remaining >= 5) {
             let id: u8 = load<u8>(ptr, 1);
             let m_len: u16 = load<u16>(ptr, 2);
 
@@ -533,4 +311,30 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             return;
         }
     }
+}
+
+
+//------------------------------------------------------------------------------
+// Message Serializers
+
+export function SendClientLogin(name: string, password: string): i32 {
+    let buffer: Uint8Array | null = Netcode.MakeClientLogin(name, password);
+    if (buffer == null) {
+        return -1;
+    }
+    MessageCombiner.Push(buffer);
+    return 0;
+}
+
+export function SendChatRequest(m: string): i32 {
+    let buffer: Uint8Array | null = Netcode.MakeChatRequest(m);
+    if (buffer == null) {
+        return -1;
+    }
+    MessageCombiner.Push(buffer);
+    return 0;
+}
+
+export function SendTimeSync(send_msec: f64): void {
+    sendUnreliable(TimeSync.MakeTimeSync(send_msec));
 }
