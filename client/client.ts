@@ -188,9 +188,9 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             TimeSync.OnTimeSample(t, peer_ts);
             TimeSync.OnTimeMinDelta(t, min_delta);
-            consoleLog("Delta: " + TimeSync.clock_offset_ts23.toString());
 
-            sendUnreliable(Netcode.MakeTimeSyncPong(peer_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
+            //consoleLog("Delta: " + TimeSync.clock_offset_ts23.toString());
+            //sendUnreliable(Netcode.MakeTimeSyncPong(peer_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
@@ -200,9 +200,9 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            consoleLog("Ping T = " + ping.toString());
-            consoleLog("Pong T = " + pong.toString());
-            consoleLog("Recv T = " + t.toString());
+            //consoleLog("Ping T = " + ping.toString());
+            //consoleLog("Pong T = " + pong.toString());
+            //consoleLog("Recv T = " + t.toString());
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
@@ -273,11 +273,11 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             let id: u8 = load<u8>(ptr, 1);
             let player: Player | null = null;
             if (player_map.has(id)) {
+                player = player_map.get(id);
+            } else {
                 player = new Player();
                 player_map.set(id, player);
                 player.id = id;
-            } else {
-                player = player_map.get(id);
             }
 
             player.score = load<u16>(ptr, 2);
@@ -359,5 +359,5 @@ export function SendChatRequest(m: string): i32 {
 export function SendTimeSync(send_msec: f64): void {
     sendUnreliable(TimeSync.MakeTimeSync(send_msec));
 
-    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    //consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }

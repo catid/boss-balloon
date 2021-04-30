@@ -15,6 +15,34 @@ let Clients = new Map<i32, ConnectedClient>();
 
 
 //------------------------------------------------------------------------------
+// PlayerIdAssigner
+
+class PlayerIdAssigner {
+    Available: Array<u8> = new Array<u8>(256);
+
+    constructor() {
+        for (let i: i32 = 0; i < 256; ++i) {
+            this.Available[i] = u8(i);
+        }
+    }
+
+    IsFull(): bool {
+        return this.Available.length <= 0;
+    }
+
+    Acquire(): u8 {
+        return this.Available.shift();
+    }
+
+    Release(id: u8): void {
+        this.Available.push(id);
+    }
+}
+
+let IdAssigner: PlayerIdAssigner = new PlayerIdAssigner();
+
+
+//------------------------------------------------------------------------------
 // Authoritative Physics Loop
 
 let last_msec : f64 = 0;
@@ -42,6 +70,13 @@ export class ConnectedClient {
 
     player_id: u8 = 0;
 
+    name: string = "";
+    score: u16 = 0;
+    wins: u32 = 0;
+    losses: u32 = 0;
+    skin: u8 = 0;
+    team: u8 = 0;
+
     TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 
     MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
@@ -53,8 +88,35 @@ export class ConnectedClient {
 };
 
 export function OnConnectionOpen(id: i32, now_msec: f64): ConnectedClient | null {
+    if (IdAssigner.IsFull()) {
+        consoleLog("Server full - Connection denied");
+        return null;
+    }
+
     let client = new ConnectedClient(id, now_msec);
     consoleLog("Connection open id=" + client.id.toString());
+
+    client.player_id = IdAssigner.Acquire();
+
+    client.name = "Player " + client.player_id.toString();
+    client.score = 100;
+
+    sendReliable(client.id, Netcode.MakeSetId(client.player_id));
+
+    // Update all the player lists
+    let new_player = Netcode.MakeSetPlayer(client.player_id, client.score, client.wins, client.losses, client.skin, client.team, client.name);
+    if (new_player != null) {
+        let clients = Clients.values();
+        for (let i: i32 = 0; i < clients.length; ++i) {
+            let old = clients[i];
+            old.MessageCombiner.Push(new_player);
+
+            if (old.id != client.id) {
+                let old_player = Netcode.MakeSetPlayer(old.player_id, old.score, old.wins, old.losses, old.skin, old.team, old.name);
+                client.MessageCombiner.Push(old_player);
+            }
+        }
+    }
 
     Clients.set(id, client);
 
@@ -73,7 +135,15 @@ export function OnReliableSendTimer(client: ConnectedClient): void {
 export function OnConnectionClose(client: ConnectedClient): void {
     consoleLog("Connection close id=" + client.id.toString());
 
+    IdAssigner.Release(client.player_id);
+
     Clients.delete(client.id);
+
+    let remove_msg = Netcode.MakeRemovePlayer(client.player_id);
+    let clients = Clients.values();
+    for (let i: i32 = 0; i < clients.length; ++i) {
+        clients[i].MessageCombiner.Push(remove_msg);
+    }
 }
 
 
@@ -101,9 +171,9 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
 
             client.TimeSync.OnTimeSample(t, peer_ts);
             client.TimeSync.OnTimeMinDelta(t, min_delta);
-            consoleLog("Delta: " + client.TimeSync.clock_offset_ts23.toString());
 
-            sendUnreliable(client.id, Netcode.MakeTimeSyncPong(peer_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
+            //consoleLog("Delta: " + client.TimeSync.clock_offset_ts23.toString());
+            //sendUnreliable(client.id, Netcode.MakeTimeSyncPong(peer_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
@@ -113,9 +183,9 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let ping: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            consoleLog("Ping T = " + ping.toString());
-            consoleLog("Pong T = " + pong.toString());
-            consoleLog("Recv T = " + t.toString());
+            //consoleLog("Ping T = " + ping.toString());
+            //consoleLog("Pong T = " + pong.toString());
+            //consoleLog("Recv T = " + t.toString());
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ClientPosition && remaining >= 6) {
@@ -181,5 +251,5 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(send_msec));
 
-    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    //consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }
