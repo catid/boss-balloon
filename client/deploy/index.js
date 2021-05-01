@@ -204,7 +204,7 @@ function StartRTCPeerConnection(on_offer) {
 // WebSocket
 
 function StartWebsocket() {
-    ws_conn = new WebSocket("wss://" + location.host + ":8443/bb/" + ClientSessionId, [], {
+    ws_conn = new WebSocket("wss://" + location.hostname + ":8443/bb/" + ClientSessionId, [], {
         perMessageDeflate: false
     });
     
