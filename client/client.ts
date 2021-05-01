@@ -142,7 +142,7 @@ export function OnConnectionOpen(now_msec: f64): void {
     Netcode.SetStartMsec(now_msec);
     player_map.clear();
     SelfId = -1;
-    TimeSync.Reset();
+    TimeSync = new Netcode.TimeSync();
 
     let chat = Netcode.MakeChatRequest("Hello World");
     if (chat != null) {
@@ -182,17 +182,18 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
         const remaining: i32 = buffer.length - offset;
         const type: u8 = load<u8>(ptr, 0);
 
-        if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
-            let peer_ts: u32 = Netcode.Load24(ptr, 1);
-            let min_delta: u32 = Netcode.Load24(ptr, 4);
+        if (type == Netcode.UnreliableType.TimeSync && remaining >= 18) {
+            let remote_send_ts: u32 = Netcode.Load24(ptr, 1);
+            TimeSync.OnTimeSample(t, remote_send_ts);
 
-            TimeSync.OnTimeSample(t, peer_ts);
-            TimeSync.OnTimeMinDelta(t, min_delta);
+            let min_trip_send_ts24_trunc: u32 = Netcode.Load24(ptr, 4);
+            let min_trip_recv_ts24_trunc: u32 = Netcode.Load24(ptr, 7);
+            let slope: f64 = load<f64>(ptr, 10);
+            TimeSync.OnPeerSync(t, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
-            //consoleLog("Delta: " + TimeSync.clock_offset_ts23.toString());
-            //sendUnreliable(Netcode.MakeTimeSyncPong(peer_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
+            sendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
 
-            offset += 7;
+            offset += 18;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
             let ping_ts: u32 = Netcode.Load24(ptr, 1);
             let pong_ts: u32 = Netcode.Load24(ptr, 4);
@@ -200,16 +201,16 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            //consoleLog("Ping T = " + ping.toString());
-            //consoleLog("Pong T = " + pong.toString());
-            //consoleLog("Recv T = " + t.toString());
+            consoleLog("Ping T = " + ping.toString());
+            consoleLog("Pong T = " + pong.toString());
+            consoleLog("Recv T = " + t.toString());
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
             TimeSync.OnTimeSample(t, peer_ts);
-            t = TimeSync.PeerToLocalTime_FromTS23(t, peer_ts);
+            t = TimeSync.PeerToLocalTime_FromTS23(peer_ts);
 
             const player_count: i32 = load<u8>(ptr, 4);
             const expected_bytes: i32 = 5 + player_count * 8; // 64 bits per player
@@ -359,5 +360,5 @@ export function SendChatRequest(m: string): i32 {
 export function SendTimeSync(send_msec: f64): void {
     sendUnreliable(TimeSync.MakeTimeSync(send_msec));
 
-    //consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }

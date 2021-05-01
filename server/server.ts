@@ -165,17 +165,18 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
         const remaining: i32 = buffer.length - offset;
         const type: u8 = load<u8>(ptr, 0);
 
-        if (type == Netcode.UnreliableType.TimeSync && remaining >= 7) {
-            let peer_ts: u32 = Netcode.Load24(ptr, 1);
-            let min_delta: u32 = Netcode.Load24(ptr, 4);
+        if (type == Netcode.UnreliableType.TimeSync && remaining >= 18) {
+            let remote_send_ts: u32 = Netcode.Load24(ptr, 1);
+            client.TimeSync.OnTimeSample(t, remote_send_ts);
 
-            client.TimeSync.OnTimeSample(t, peer_ts);
-            client.TimeSync.OnTimeMinDelta(t, min_delta);
+            let min_trip_send_ts24_trunc: u32 = Netcode.Load24(ptr, 4);
+            let min_trip_recv_ts24_trunc: u32 = Netcode.Load24(ptr, 7);
+            let slope: f64 = load<f64>(ptr, 10);
+            client.TimeSync.OnPeerSync(t, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
-            //consoleLog("Delta: " + client.TimeSync.clock_offset_ts23.toString());
-            //sendUnreliable(client.id, Netcode.MakeTimeSyncPong(peer_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
+            sendUnreliable(client.id, Netcode.MakeTimeSyncPong(remote_send_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
 
-            offset += 7;
+            offset += 18;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
             let ping_ts: u32 = Netcode.Load24(ptr, 1);
             let pong_ts: u32 = Netcode.Load24(ptr, 4);
@@ -192,7 +193,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
 
             client.TimeSync.OnTimeSample(t, peer_ts);
-            t = client.TimeSync.PeerToLocalTime_FromTS23(t, peer_ts);
+            t = client.TimeSync.PeerToLocalTime_FromTS23(peer_ts);
 
             const x: u16 = load<u16>(ptr, 4);
             const y: u16 = load<u16>(ptr, 6);
@@ -251,5 +252,5 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(send_msec));
 
-    //consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }

@@ -13,8 +13,15 @@ export const kMaxPacketBytes: i32 = 1100;
 
     All packets can be appended to eachother.
 
-    [UnreliableType.TimeSync(1 byte)] [Local-24bit-SendTimestamp(3 bytes)] [Remote-24bit-MinDelta(3 bytes)]
-    Sent once a second by both sides to establish time sync.
+    [UnreliableType.TimeSync(1 byte)]
+    [Local-24bit-SendTimestamp(3 bytes)]
+    [min_trip_send_ts24_trunc(3 bytes)] [min_trip_recv_ts24_trunc(3 bytes)]
+    [ClockDriftSlope(8 bytes)]
+    Sent once a second by both sides.  Used to establish time sync.
+    Includes a send timestamp for additional data points.
+    Includes the probe received from remote peer we estimate had the shorted trip time,
+    providing that probe's 24-bit send timestamp and 24-bit receive timestamp.
+    Includes our best estimate of the clock drift slope.
 
     [UnreliableType.TimeSyncPong(1 byte)] [Timestamp from sender(3 bytes)] [Remote-23bit-SendTimestamp(3 bytes)]
     Reply to TimeSync.  Used to test the time sync code.
@@ -269,177 +276,417 @@ function TS23ExpandFromTruncatedWithBias(recent: u64, trunc23: u32): u64 {
     return result;
 }
 
-class SampleTS24 {
-    value: u32 = 0; // 24-bit
-    t: u64 = 0; // time in any units
+// Similar to above but for 24 bits instead of 23.
+function TS24ExpandFromTruncatedWithBias(recent: u64, trunc24: u32): u64 {
+    const bias: u32 = 0x400000;
+    const msb: u32 = 0x800000;
 
-    constructor(value: u32 = 0, t: u64 = 0) {
-        this.value = value;
-        this.t = t;
+    let result: u64 = trunc24 | (recent & ~u64(0xffffff));
+    const recent_low: u32 = u32(recent) & 0xffffff;
+
+    // If recent - trunc would be negative:
+    if (recent_low < trunc24)
+    {
+        // If it is large enough to roll back a MSB:
+        const abs_diff: u32 = trunc24 - recent_low;
+        if (abs_diff >= (msb - bias)) {
+            result -= msb << 1;
+        }
     }
-    TimeoutExpired(now: u64, timeout: u64): bool {
-        return u64(now - this.t) > timeout;
+    else
+    {
+        // If it is large enough to roll ahead a MSB:
+        const abs_diff: u32 = recent_low - trunc24;
+        if (abs_diff > (msb + bias)) {
+            result += msb << 1;
+        }
     }
-    CopyFrom(sample: SampleTS24): void {
-        this.value = sample.value;
-        this.t = sample.t;
-    }
-    Set(value: u32 = 0, t: u64 = 0): void {
-        this.value = value;
-        this.t = t;
-    }
+
+    return result;
 }
 
-class WindowedMinTS24 {
-    samples: Array<SampleTS24> = new Array<SampleTS24>(3);
+class SampleTS24 {
+    remote_ts: u64;
+    local_ts: u64;
 
-    constructor() {
-        for (let i: i32 = 0; i < 3; ++i) {
-            this.samples[i] = new SampleTS24();
-        }
+    constructor(local_ts: u64 = 0, remote_ts: u64 = 0) {
     }
-    IsValid(): bool {
-        return this.samples[0].value != 0;
-    }
-    GetBest(): u32 {
-        return this.samples[0].value;
-    }
-    Reset(value: u32 = 0, t: u64 = 0): void {
-        for (let i: i32 = 0; i < 3; ++i) {
-            this.samples[i].Set(value, t);
-        }
-    }
-    Update(value: u32, t: u64, window_length: u64): void {
-        // On the first sample, new best sample, or if window length has expired:
-        if (!this.IsValid() ||
-            TS24_IsLessOrEqual(value, this.samples[0].value) ||
-            this.samples[2].TimeoutExpired(t, window_length))
-        {
-            this.Reset(value, t);
-            return;
-        }
 
-        // Insert the new value into the sorted array
-        if (TS24_IsLessOrEqual(value, this.samples[1].value)) {
-            this.samples[2].Set(value, t);
-            this.samples[1].Set(value, t);
-        } else if (TS24_IsLessOrEqual(value, this.samples[2].value)) {
-            this.samples[2].Set(value, t);
-        }
-
-        // Expire best if it has been the best for a long time
-        if (this.samples[0].TimeoutExpired(t, window_length)) {
-            if (this.samples[1].TimeoutExpired(t, window_length)) {
-                this.samples[0].CopyFrom(this.samples[2]);
-                this.samples[1].Set(value, t);
-            } else {
-                this.samples[0].CopyFrom(this.samples[1]);
-                this.samples[1].CopyFrom(this.samples[2]);
-            }
-            this.samples[2].Set(value, t);
-            return;
-        }
-
-        // Quarter of window has gone by without a better value - Use the second-best
-        if (this.samples[1].value == this.samples[0].value &&
-            this.samples[1].TimeoutExpired(t, window_length / 4))
-        {
-            this.samples[1].Set(value, t);
-            this.samples[2].Set(value, t);
-            return;
-        }
-
-        // Half the window has gone by without a better value - Use the third-best one
-        if (this.samples[2].value == this.samples[1].value &&
-            this.samples[2].TimeoutExpired(t, window_length / 2))
-        {
-            this.samples[2].Set(value, t);
-        }
+    IsTimeoutExpired(now: u64, timeout: u64): bool {
+        return u64(now - this.local_ts) > timeout;
     }
 }
 
 export class TimeSync {
-    min_delta_calc_ts24: WindowedMinTS24 = new WindowedMinTS24();
-    peer_min_delta_ts24: u32 = 0;
-    clock_offset_ts23: i32 = 0;
+    samples: Array<SampleTS24> = new Array<SampleTS24>(0);
+
+    // Used to hallucinate the upper bits of peer timestamps
+    last_remote_ts: u64 = 0;
+
+    // Calculated by RecalculateSlope()
+    local_slope: f64 = 1.0;
+
+    // r2l_min_trip: Remote send time, and local receive time (with lowest latency)
+    r2l_min_trip: SampleTS24 = new SampleTS24(0, 0);
+
+    // Provided by peer
+    remote_slope: f64 = 1.0;
+
+    // Provided by peer
+    // l2r_min_trip: Local send time, and remote receive time (with lowest latency)
+    l2r_min_trip: SampleTS24 = new SampleTS24(0, 0);
+
+    // Average of local and remote slopes
+    consensus_slope: f64 = 1.0;
+
+    // X/Y intercept for remote timestamp drift correction to local tick rate
+    remote_dy: i64 = 0;
+    local_dx: i64 = 0;
 
     constructor() {
     }
 
-    Reset(): void {
-        this.peer_min_delta_ts24 = 0;
-        this.clock_offset_ts23 = 0;
-        this.min_delta_calc_ts24.Reset();
+    // Update time sync with latest information
+    UpdateTimeSync(): void {
+        // Recalculate our slope estimate from one-way data from peer
+        this.RecalculateSlope();
+
+        // Recalculate our best estimate of the shortest one-way trip
+        this.RecalculateMinTrip();
+
+        // Take the average of local and remote slope estimates
+        const m = (this.local_slope + this.remote_slope) * 0.5;
+        this.consensus_slope = m;
+
+        // Note that each has an unknown trip time, but we assume
+        // that these trips are near the shortest trip each way, and further
+        // that these trip times are similar since the shortest trips
+        // on a balanced link should be almost always close since they are
+        // Poisson arrival processes.
+        // We also assume there is no clock drift over the short trip time,
+        // which is reasonable even for large drift.
+
+        // So to cancel out the Min(One-Way Delay) transit times:
+        // r2l_min_trip.local_ts - r2l_min_trip.remote_ts = Min(OWD) + ClockDelta(L - R)
+        // l2r_min_trip.remote_ts - l2r_min_trip.local_ts = Min(OWD) - ClockDelta(L - R)
+        // 2 * ClockDelta(L - R) = (r2l_min_trip.local_ts - r2l_min_trip.remote_ts) - (l2r_min_trip.remote_ts - l2r_min_trip.local_ts)
+
+        // The curve ball is that the remote timestamps are drifting relative to ours,
+        // and this equation assumes the clocks are ticking at the same rate.
+        // So first we must transform the remote timestamps to local ticks.
+
+        // And since the slope is a guess, we should choose the point on the right
+        // between the two points as the new origin, so that when we convert future
+        // timestamps, the effect of the slope is as small as possible.
+
+        // If r2l_min_trip is on the right of l2r_min_trip:
+        if (i64(this.r2l_min_trip.local_ts - this.l2r_min_trip.local_ts) > 0) {
+            // Use r2l_min_trip as the origin for remote timestamp drift correction.
+            this.remote_dy = this.r2l_min_trip.remote_ts;
+
+            // Calculate distance from local/remote reference points (should be positive)
+            const dy = i32(this.r2l_min_trip.remote_ts - this.l2r_min_trip.remote_ts);
+            const dx = i32(this.r2l_min_trip.local_ts - this.l2r_min_trip.local_ts);
+
+            // Calculate delta from local time when remote probe was sent remotely
+            this.local_dx = this.r2l_min_trip.local_ts - (dx - i32(dy / m)) / 2;
+        } else {
+            // Use l2r_min_trip as the origin for remote timestamp drift correction.
+            this.remote_dy = this.l2r_min_trip.remote_ts;
+
+            // Calculate distance from local/remote reference points (should be positive)
+            const dy = i32(this.l2r_min_trip.remote_ts - this.r2l_min_trip.remote_ts);
+            const dx = i32(this.l2r_min_trip.local_ts - this.r2l_min_trip.local_ts);
+
+            // Calculate delta from local time when local probe was received remotely
+            this.local_dx = this.l2r_min_trip.local_ts - (dx - i32(dy / m)) / 2;
+        }
     }
 
-    RecalculateClockOffset(): void {
-        // min(OWD_i) + ClockDelta(L-R)_i
-        let minRecvDelta_TS24: u32 = this.min_delta_calc_ts24.GetBest();
-    
-        // min(OWD_j) + ClockDelta(R-L)_j
-        let minSendDelta_TS24: u32 = this.peer_min_delta_ts24;
-    
-        // Standard assumption: min(OWD_i) = min(OWD_j)
-        // Given: ClockDelta(R-L)_j = -ClockDelta(L-R)_i
-        // ClockDelta(R-L) ~= (ClockDelta(R-L)_j - ClockDelta(L-R)_i) / 2
-        // Note we only get 23 valid bits not 24 out of this calculation.
-        this.clock_offset_ts23 = ((minSendDelta_TS24 - minRecvDelta_TS24) >> 1) & 0x7fffff;
+    // To convert from remote to local:
+    // Local = local_dx + (Remote - remote_dy) / consensus_slope
+    TransformRemoteToLocal(remote_ts: u64): u64 {
+        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) / this.consensus_slope);
+    }
+
+    // To convert from local to remote:
+    // Remote = remote_dy + (Local - local_dx) * consensus_slope
+    // Note that only the low 23-bits are valid in the view of the remote computer because
+    // we only have a view of 24 bits of the remote timestamps, and we lose one bit from the
+    // division by 2 above.
+    TransformLocalToRemote(local_ts: u64): u64 {
+        return this.remote_dy + i64(f64(i64(local_ts - this.local_dx)) * this.consensus_slope);
+    }
+
+    RecalculateMinTrip(): void {
+        const sample_count: i32 = this.samples.length;
+
+        // If there is only one sample use that one:
+        if (sample_count <= 1) {
+            if (sample_count >= 1) {
+                this.r2l_min_trip = this.samples[0];
+            }
+            return;
+        }
+
+        // Line equation: y = mx + b,
+        // where x is the local time, and y is the remote time.
+        const m: f64 = this.local_slope;
+
+        // Maximize b = y - mx, so we find the left-most point,
+        // which has the lowest latency if the slope estimate is good
+        // and the data is reasonable.
+
+        let best_sample = this.samples[0];
+        let best_b: f64;
+        {
+            const y0: u64 = best_sample.remote_ts;
+            const x0: u64 = best_sample.local_ts;
+            best_b = f64(y0) - m * f64(x0);
+        }
+
+        // Calculate "b" for all sample points:
+        for (let i: i32 = 1; i < sample_count; ++i) {
+            const sample = this.samples[i];
+            const y: u64 = sample.remote_ts;
+            const x: u64 = sample.local_ts;
+            const b: f64 = f64(y) - m * f64(x);
+
+            if (b > best_b) {
+                best_sample = sample;
+                best_b = b;
+            }
+        }
+
+        this.r2l_min_trip = best_sample;
+    }
+
+    RecalculateSlope(): void {
+        let slopes: Array<f64> = new Array<f64>(0);
+
+        const sample_count: i32 = this.samples.length;
+        let skip_j: i32 = sample_count / 4;
+        if (skip_j < 1) {
+            skip_j = 1;
+        }
+        let skip_k: i32 = sample_count / 2;
+        if (skip_k <= skip_j) {
+            // Make sure we do not sample the same points twice
+            skip_k = skip_j + 1;
+        }
+
+        for (let i: i32 = 0; i < sample_count; ++i) {
+            const sample = this.samples[i];
+
+            // Skip ahead to find a probe to compare:
+            const j = i + skip_j;
+            if (j >= sample_count) {
+                continue;
+            }
+
+            const sample_j = this.samples[j];
+            const local_dt_j = i32(sample_j.local_ts - sample.local_ts);
+            if (local_dt_j <= 0) {
+                continue;
+            }
+
+            const m_j = i32(sample_j.remote_ts - sample.remote_ts) / f64(i32(local_dt_j));
+            slopes.push(m_j);
+
+            // Skip further:
+            const k = i + skip_k;
+            if (k >= sample_count) {
+                continue;
+            }
+
+            const sample_k = this.samples[k];
+            const local_dt_k = i32(sample_k.local_ts - sample.local_ts);
+            if (local_dt_k <= 0) {
+                continue;
+            }
+
+            const m_k = i32(sample_k.remote_ts - sample.remote_ts) / f64(i32(local_dt_k));
+            slopes.push(m_k);
+        }
+
+        // Not enough points to pick a good slope yet
+        if (slopes.length <= 2)
+        {
+            if (sample_count < 2) {
+                this.local_slope = 1.0;
+                return;
+            }
+
+            const sample_left = this.samples[0];
+            const sample_right = this.samples[sample_count - 1];
+            this.local_slope = i32(sample_right.remote_ts - sample_left.remote_ts) / f64(i32(sample_right.local_ts - sample_left.local_ts));
+
+            return;
+        }
+
+        slopes.sort();
+
+        /*
+            Score for locality using a triangle filter:
+
+                   1
+                   /\
+                  /  \
+                 /    \
+            ____/      \____0
+                |------|
+                100 ppm span
+        */
+
+        let best_score: f64 = 0.0;
+        let best_slope: f64 = 0.0;
+        let best_slope_i: i32 = 0;
+        const kSlopeRadius: f64 = 50.0 /1000_000.0; // 50 ppm
+
+        // Check score for each candidate slope
+        const slope_count: i32 = slopes.length;
+        for (let i: i32 = 0; i < slope_count; ++i) {
+            let score: f64 = 0.0;
+            const slope: f64 = slopes[i];
+
+            // Score forward up to 10 values until radius is hit
+            for (let offset: i32 = 1; offset < 10; ++offset) {
+                const j: i32 = i + offset;
+                if (j >= slope_count) {
+                    break; // Hit edge: done
+                }
+
+                const slope_j = slopes[j];
+                const slope_delta = slope_j - slope;
+                if (slope_delta >= kSlopeRadius) {
+                    break; // Hit radius: Done
+                }
+
+                score += kSlopeRadius - slope_delta;
+            }
+
+            // Score backward down to 10 values until radius is hit
+            for (let offset: i32 = 1; offset < 10; ++offset) {
+                const j: i32 = i - offset;
+                if (j < 0) {
+                    break; // Hit edge: done
+                }
+
+                const slope_j = slopes[j];
+                const slope_delta = slope - slope_j;
+                if (slope_delta >= kSlopeRadius) {
+                    break; // Hit radius: Done
+                }
+
+                score += kSlopeRadius - slope_delta;
+            }
+
+            if (score > best_score) {
+                best_score = score;
+                best_slope = slope;
+                best_slope_i = i;
+            }
+        }
+
+        // Refine by averaging the best slope with its closest neighbor
+        let neighbor_left: f64 = best_slope;
+        let neighbor_right: f64 = best_slope;
+        if (best_slope_i > 0) {
+            neighbor_left = slopes[best_slope_i - 1];
+            if (best_slope_i + 1 < slope_count) {
+                neighbor_right = slopes[best_slope_i + 1];
+            } else {
+                neighbor_right = neighbor_left;
+            }
+        } else {
+            if (best_slope_i + 1 < slope_count) {
+                neighbor_right = slopes[best_slope_i + 1];
+            }
+            neighbor_left = neighbor_right;
+        }
+
+        if (abs(neighbor_left - best_slope) < abs(neighbor_right - best_slope)) {
+            this.local_slope = (neighbor_left + best_slope) * 0.5;
+        } else {
+            this.local_slope = (neighbor_right + best_slope) * 0.5;
+        }
     }
     
-    OnTimeSample(t: u64, peer_ts: u32): void {
-        // OWD_i + ClockDelta(L-R)_i = Local Receive Time - Remote Send Time
-        const delta = u32((t - peer_ts) & 0xffffff);
-    
-        this.min_delta_calc_ts24.Update(delta, t, kMinDeltaWindowLength);
-    
-        this.RecalculateClockOffset();
+    OnTimeSample(local_ts: u64, trunc_remote_ts24: u32): void {
+        // Expand incoming timestamps to 64-bit, though the high bits will be hallucinated.
+        let remote_ts: u64 = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, trunc_remote_ts24);
+        // Do not roll this backwards
+        if (i64(remote_ts - this.last_remote_ts) > 0) {
+            this.last_remote_ts = remote_ts;
+        }
+
+        let sample: SampleTS24 = new SampleTS24(local_ts, remote_ts);
+        this.samples.push(sample);
     }
-    
-    OnTimeMinDelta(t: u64, min_delta: u32): void {
-        this.peer_min_delta_ts24 = min_delta;
-    
-        this.RecalculateClockOffset();
+
+    // Peer provides, for the best probe we have sent so far:
+    // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
+    // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
+    OnPeerSync(local_ts: u64, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f64): void {
+        // Expand to 64 bits
+        let min_trip_send_ts: u64 = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
+        let min_trip_recv_ts: u64 = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
+
+        // Store info
+        this.l2r_min_trip.local_ts = min_trip_send_ts;
+        this.l2r_min_trip.remote_ts = min_trip_recv_ts;
+        this.remote_slope = slope;
+
+        // Update time sync from latest info
+        this.UpdateTimeSync();
     }
-    
+
     // Takes in a 23-bit timestamp in peer's clock domain,
     // and produces a full 64-bit timestamp in local clock domain.
-    PeerToLocalTime_FromTS23(t: u64, peer_ts23: u32): u64 {
-        // Offset = Remote - Local
-        const local_ts23: u32 = peer_ts23 - this.clock_offset_ts23;
-        return TS23ExpandFromTruncatedWithBias(t, local_ts23 & 0x7fffff);
+    PeerToLocalTime_FromTS23(peer_ts23: u32): u64 {
+        // Expand incoming timestamps to 64-bit, though the high bits will be hallucinated.
+        const remote_ts: u64 = TS23ExpandFromTruncatedWithBias(this.last_remote_ts, peer_ts23);
+
+        return this.TransformRemoteToLocal(remote_ts);
     }
 
     // Produces a 23-bit timestamp in peer's clock domain.
-    LocalToPeerTime_ToTS23(t: u64): u32 {
-        return u32(t + this.clock_offset_ts23) & 0x7fffff;
+    LocalToPeerTime_ToTS23(local_ts: u64): u32 {
+        // Convert local to remote, though the high bits will be hallucinated.
+        const remote_ts: u64 = this.TransformLocalToRemote(local_ts);
+
+        return u32(remote_ts) & 0x7fffff;
     }
 
     // Takes in a full 64-bit timestamp in local clock domain,
     // and produces a truncated 23-bit timestamp in local clock domain.
-    TruncateLocalTime_ToTS23(t: u64): u32 {
-        return u32(t) & 0x7fffff;
+    TruncateLocalTime_ToTS23(local_ts: u64): u32 {
+        return u32(local_ts) & 0x7fffff;
     }
 
     // Takes in a 23-bit timestamp in local clock domain,
     // and produces a full 64-bit timestamp in local clock domain.
-    ExpandLocalTime_FromTS23(t: u64, local_ts23: u32): u64 {
-        return TS23ExpandFromTruncatedWithBias(t, local_ts23 & 0x7fffff);
+    // local_ts: A recent local 64-bit timestamp.
+    ExpandLocalTime_FromTS23(local_ts: u64, local_ts23: u32): u64 {
+        return TS23ExpandFromTruncatedWithBias(local_ts, local_ts23 & 0x7fffff);
     }
 
     MakeTimeSync(send_msec: f64): Uint8Array {
-        let buffer: Uint8Array = new Uint8Array(7);
+        let buffer: Uint8Array = new Uint8Array(18);
         let ptr: usize = buffer.dataStart;
 
-        let min_delta: u32 = this.min_delta_calc_ts24.GetBest();
-        let min_delta_trunc: u32 = u32(min_delta & 0xffffff);
-    
         // Convert timestamp to integer with 1/4 msec (desired) precision
-        let t: u64 = MsecToTime(send_msec);
-        let t_trunc: u32 = u32(t & 0xffffff);
-    
+        let send_ts: u64 = MsecToTime(send_msec);
+
         store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
-        Netcode.Store24(ptr, 1, t_trunc);
-        Netcode.Store24(ptr, 4, min_delta_trunc);
+        // Send timestamp
+        Netcode.Store24(ptr, 1, u32(send_ts & 0xff_ff_ff));
+        // min_trip_send_ts24_trunc:
+        Netcode.Store24(ptr, 4, u32(this.r2l_min_trip.remote_ts) & 0xff_ff_ff);
+        // min_trip_recv_ts24_trunc:
+        Netcode.Store24(ptr, 7, u32(this.r2l_min_trip.local_ts) & 0xff_ff_ff);
+        // Our slope estimate
+        store<f64>(ptr, this.local_slope, 10);
 
         return buffer;
     }
