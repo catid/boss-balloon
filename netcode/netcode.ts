@@ -716,6 +716,9 @@ export class TimeSync {
             //consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
             //consoleLog("this.local_slope = " + this.local_slope.toString());
 
+            this.candidate_slopes.length = 0;
+            this.candidate_slopes.push(slope);
+
             return;
         }
 
