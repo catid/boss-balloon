@@ -396,7 +396,7 @@ export class TimeSync {
         this.RecalculateSlope();
 
         // EWMA smoothing for our slope estimate
-        this.smoothed_local_slope = this.smoothed_local_slope * 0.75 + this.local_slope * 0.25;
+        this.smoothed_local_slope = this.smoothed_local_slope * 0.9 + this.local_slope * 0.1;
 
         //consoleLog("local slope = " + this.local_slope.toString());
         //consoleLog("remote slope = " + this.remote_slope.toString());
