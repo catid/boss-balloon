@@ -456,7 +456,7 @@ export class TimeSync {
             const owd = (dx - i32(dy / this.consensus_slope)) / 2;
             this.local_dx = this.r2l_min_trip.local_ts - owd;
 
-            consoleLog("owd(l2r left) = " + owd.toString() + " slope = " + this.consensus_slope.toString());
+            consoleLog("owd(l2r left) = " + owd.toString() + " slope = " + ((this.consensus_slope - 1) * 1000000).toString() + " ppm");
 
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         } else {
@@ -477,7 +477,7 @@ export class TimeSync {
             const owd = (dx - i32(dy / this.consensus_slope)) / 2;
             this.local_dx = this.l2r_min_trip.local_ts - owd;
 
-            consoleLog("owd(l2r right) = " + owd.toString() + " slope = " + this.consensus_slope.toString());
+            consoleLog("owd(l2r right) = " + owd.toString() + " slope = " + ((this.consensus_slope - 1) * 1000000).toString() + " ppm");
 
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         }
