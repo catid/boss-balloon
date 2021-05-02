@@ -349,6 +349,7 @@ export class TimeSync {
     // Calculated by RecalculateSlope()
     candidate_slopes: Array<f64> = new Array<f64>(0);
     local_slope: f64 = 1.0;
+    smoothed_local_slope: f64 = 1.0;
     found_supported_slope_estimate: bool = false;
 
     // r2l_min_trip: Remote send time, and local receive time (with lowest latency)
@@ -394,16 +395,18 @@ export class TimeSync {
         // Recalculate our slope estimate from one-way data from peer
         this.RecalculateSlope();
 
-        // Recalculate our best estimate of the shortest one-way trip
-        this.RecalculateMinTrip();
+        // EWMA smoothing for our slope estimate
+        this.smoothed_local_slope = this.smoothed_local_slope * 0.75 + this.local_slope * 0.25;
 
         //consoleLog("local slope = " + this.local_slope.toString());
         //consoleLog("remote slope = " + this.remote_slope.toString());
         //consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
 
         // Take the average of local and remote slope estimates
-        const m = (this.local_slope + 1.0/this.remote_slope) * 0.5;
-        this.consensus_slope = m;
+        this.consensus_slope = (this.smoothed_local_slope + 1.0/this.remote_slope) * 0.5;
+
+        // Recalculate our best estimate of the shortest one-way trip
+        this.RecalculateMinTrip();
 
         //consoleLog("consensus slope = " + m.toString());
 
@@ -450,10 +453,10 @@ export class TimeSync {
             //consoleLog("dx = " + dx.toString());
 
             // Calculate delta from local time when remote probe was sent remotely
-            const owd = (dx - i32(dy / m)) / 2;
+            const owd = (dx - i32(dy / this.consensus_slope)) / 2;
             this.local_dx = this.r2l_min_trip.local_ts - owd;
 
-            //consoleLog("owd = " + owd.toString());
+            consoleLog("owd(l2r left) = " + owd.toString());
 
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         } else {
@@ -471,10 +474,10 @@ export class TimeSync {
             //consoleLog("dx = " + dx.toString());
 
             // Calculate delta from local time when local probe was received remotely
-            const owd = (dx - i32(dy / m)) / 2;
+            const owd = (dx - i32(dy / this.consensus_slope)) / 2;
             this.local_dx = this.l2r_min_trip.local_ts - owd;
 
-            //consoleLog("owd = " + owd.toString());
+            consoleLog("owd(l2r right) = " + owd.toString());
 
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         }
@@ -541,9 +544,7 @@ export class TimeSync {
 
         // Line equation: y = mx + b,
         // where x is the local time, and y is the remote time.
-        const m: f64 = this.local_slope;
-
-        //consoleLog("this.local_slope = " + this.local_slope.toString());
+        const m: f64 = this.consensus_slope;
 
         // Maximize b = y - mx, so we find the left-most point,
         // which has the lowest latency if the slope estimate is good
