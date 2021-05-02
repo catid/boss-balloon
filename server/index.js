@@ -174,6 +174,8 @@ class WebRTCClient {
                     return;
                 }
 
+                // Faster at first
+                this.timeSyncInterval = 100;
                 this.dispatchTimeSync = () => {
                     var variance = Math.random() * 20 - 10;
                     this.syncTimer = setTimeout(() => {
@@ -182,7 +184,11 @@ class WebRTCClient {
                         }
 
                         this.dispatchTimeSync();
-                    }, 1_000 + variance);
+                    }, this.timeSyncInterval + variance);
+                    this.timeSyncInterval *= 2;
+                    if (this.timeSyncInterval > 1_000) {
+                        this.timeSyncInterval = 1_000; // Steady state interval
+                    }
                 };
                 this.dispatchTimeSync();
             

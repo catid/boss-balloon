@@ -143,6 +143,8 @@ export function OnConnectionOpen(now_msec: f64): void {
     SelfId = -1;
     TimeSync = new Netcode.TimeSync();
 
+    SendTimeSync(now_msec);
+
     let chat = Netcode.MakeChatRequest("Hello World");
     if (chat != null) {
         sendReliable(chat);

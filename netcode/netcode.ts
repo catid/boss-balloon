@@ -595,7 +595,7 @@ export class TimeSync {
         const sample_count: i32 = this.samples.length;
 
         // Regularly sample 3 offsets from each sample to discover candidate slopes
-        let skip_j: i32 = sample_count / 4;
+        let skip_j: i32 = sample_count / 2;
         if (skip_j < 1) {
             skip_j = 1;
         }
@@ -680,8 +680,9 @@ export class TimeSync {
         }
 
         const slope_count: i32 = slopes.length;
-        if (slope_count < 10) {
-            // Not enough points to pick a good slope yet
+        if (slope_count < 3) {
+            // Not enough points to pick a good slope yet.
+            // Just guess 1.0 until we get enough data to start guessing slope
             return;
         }
 

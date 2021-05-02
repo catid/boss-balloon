@@ -28,6 +28,7 @@ let ws_conn = null;
 let webrtc_dc_count = 0;
 let syncTimer = null;
 let reliableSendTimer = null;
+let timeSyncInterval = 100;
 
 function StopWebsocket() {
     if (ws_conn != null) {
@@ -39,13 +40,18 @@ function StopWebsocket() {
 function OnConnectionOpen() {
     wasmExports.OnConnectionOpen(performance.now());
 
+    timeSyncInterval = 100;
     var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
         syncTimer = setTimeout(() => {
             wasmExports.SendTimeSync(performance.now());
 
             dispatchTimeSync();
-        }, 1_000 + variance);
+        }, timeSyncInterval + variance);
+        timeSyncInterval *= 2;
+        if (timeSyncInterval > 1_000) {
+            timeSyncInterval = 1_000; // Steady state interval
+        }
     };
     dispatchTimeSync();
 

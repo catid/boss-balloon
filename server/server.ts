@@ -98,9 +98,10 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     consoleLog("Connection open id=" + client.id.toString());
 
     client.player_id = IdAssigner.Acquire();
-
     client.name = "Player " + client.player_id.toString();
     client.score = 100;
+
+    SendTimeSync(client);
 
     sendReliable(client.id, Netcode.MakeSetId(client.player_id));
 
