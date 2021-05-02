@@ -174,11 +174,17 @@ class WebRTCClient {
                     return;
                 }
 
-                this.syncTimer = setInterval(() => {
-                    if (this.client != null) {
-                        wasmExports.SendTimeSync(this.client);
-                    }
-                }, 1_000);
+                function dispatchTimeSync() {
+                    var variance = Math.random() * 20 - 10;
+                    this.syncTimer = setTimeout(() => {
+                        if (this.client != null) {
+                            wasmExports.SendTimeSync(this.client);
+                        }
+
+                        dispatchTimeSync();
+                    }, 1_000 + variance);
+                }
+                dispatchTimeSync();
             
                 this.reliableSendTimer = setInterval(() => {
                     if (this.client != null) {
@@ -221,7 +227,7 @@ class WebRTCClient {
     Close() {
         this.connected = false;
         if (this.syncTimer != null) {
-            clearInterval(this.syncTimer);
+            clearTimeout(this.syncTimer);
             this.syncTimer= null;
         }
         if (this.reliableSendTimer != null) {

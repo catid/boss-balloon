@@ -39,9 +39,17 @@ function StopWebsocket() {
 function OnConnectionOpen() {
     wasmExports.OnConnectionOpen(performance.now());
 
-    syncTimer = setInterval(() => {
-        wasmExports.SendTimeSync(performance.now());
-    }, 1_000);
+    function dispatchTimeSync() {
+        var variance = Math.random() * 20 - 10;
+        this.syncTimer = setTimeout(() => {
+            if (this.client != null) {
+                wasmExports.SendTimeSync(this.client);
+            }
+
+            dispatchTimeSync();
+        }, 1_000 + variance);
+    }
+    dispatchTimeSync();
 
     reliableSendTimer = setInterval(() => {
         wasmExports.OnReliableSendTimer();
@@ -50,7 +58,7 @@ function OnConnectionOpen() {
 
 function StopWebRTC() {
     if (syncTimer != null) {
-        clearInterval(syncTimer);
+        clearTimeout(syncTimer);
         syncTimer= null;
     }
     if (reliableSendTimer != null) {
