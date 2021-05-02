@@ -771,6 +771,14 @@ export class TimeSync {
             }
         }
 
+        // If none of the slopes scored any points for neighbors,
+        // just pick the median.  This happens during startup when there
+        // are not many data-points yet.
+        if (best_score <= 0.0) {
+            best_slope_i = slope_count / 2;
+            best_slope = slopes[best_slope_i];
+        }
+
         // Refine by averaging the best slope with its closest neighbor
         let neighbor_left: f64 = best_slope;
         let neighbor_right: f64 = best_slope;
