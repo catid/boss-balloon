@@ -382,8 +382,8 @@ const wasmImports = {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
-            console.log(copy); // sync version
-            //setTimeout(() => { console.log(copy); }, 50); // async version
+            //console.log(copy); // sync version
+            setTimeout(() => { console.log(copy); }, 50); // async version
         },
         getMilliseconds: () => {
             return performance.now();
