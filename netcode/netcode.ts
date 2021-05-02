@@ -482,6 +482,11 @@ export class TimeSync {
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         }
 
+        consoleLog("local_slope = " + this.local_slope.toString());
+        consoleLog("smoothed_local_slope = " + this.smoothed_local_slope.toString());
+        consoleLog("remote_slope = " + this.remote_slope.toString());
+        consoleLog("consensus_slope = " + this.consensus_slope.toString());
+
         this.is_dirty = false;
     }
 
