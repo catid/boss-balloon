@@ -681,7 +681,7 @@ export class TimeSync {
         // Not enough points to pick a good slope yet
         if (slopes.length <= 2)
         {
-            //consoleLog("Not enough slope samples yet: " + slopes.length.toString());
+            consoleLog("Not enough slope samples yet: " + slopes.length.toString());
 
             if (sample_count < 2) {
                 this.local_slope = 1.0;
@@ -708,11 +708,11 @@ export class TimeSync {
 
             this.local_slope = slope;
 
-            //consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
-            //consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
-            //consoleLog("sample_right.local_ts = " + sample_right.local_ts.toString());
-            //consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
-            //consoleLog("this.local_slope = " + this.local_slope.toString());
+            consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
+            consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
+            consoleLog("sample_right.local_ts = " + sample_right.local_ts.toString());
+            consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
+            consoleLog("this.local_slope = " + this.local_slope.toString());
 
             return;
         }
