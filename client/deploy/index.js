@@ -42,7 +42,7 @@ function OnConnectionOpen() {
     var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
         syncTimer = setTimeout(() => {
-            wasmExports.SendTimeSync();
+            wasmExports.SendTimeSync(performance.now());
 
             dispatchTimeSync();
         }, 1_000 + variance);
