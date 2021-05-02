@@ -349,6 +349,7 @@ export class TimeSync {
     // Calculated by RecalculateSlope()
     candidate_slopes: Array<f64> = new Array<f64>(0);
     local_slope: f64 = 1.0;
+    found_supported_slope_estimate: bool = false;
 
     // r2l_min_trip: Remote send time, and local receive time (with lowest latency)
     r2l_min_trip: SampleTS24 = new SampleTS24(0, 0);
@@ -683,6 +684,13 @@ export class TimeSync {
         // Not enough points to pick a good slope yet
         if (slopes.length <= 2)
         {
+            if (this.found_supported_slope_estimate) {
+                // It's much better to just give up than to try to make do with bad data.
+                // The slope doesn't change very often so there is no rush to come up with
+                // a new estimate after we have found one.
+                return;
+            }
+
             //consoleLog("Not enough slope samples yet: " + slopes.length.toString());
 
             if (sample_count < 2) {
@@ -709,6 +717,7 @@ export class TimeSync {
             }
 
             this.local_slope = slope;
+            this.found_supported_slope_estimate = true;
 
             //consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
             //consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
@@ -795,6 +804,13 @@ export class TimeSync {
         // just pick the median.  This happens during startup when there
         // are not many data-points yet.
         if (best_score <= 0.0) {
+            if (this.found_supported_slope_estimate) {
+                // It's much better to just give up than to try to make do with bad data.
+                // The slope doesn't change very often so there is no rush to come up with
+                // a new estimate after we have found one.
+                return;
+            }
+
             best_slope_i = slope_count / 2;
             best_slope = slopes[best_slope_i];
         }
