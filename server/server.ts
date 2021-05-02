@@ -260,5 +260,5 @@ export function SendTimeSync(client: ConnectedClient): void {
     const send_msec: f64 = getMilliseconds();
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(send_msec));
 
-    //consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
 }
