@@ -379,9 +379,9 @@ export class TimeSync {
         // Recalculate our best estimate of the shortest one-way trip
         this.RecalculateMinTrip();
 
-        //consoleLog("local slope = " + this.local_slope.toString());
-        //consoleLog("remote slope = " + this.remote_slope.toString());
-        //consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
+        consoleLog("local slope = " + this.local_slope.toString());
+        consoleLog("remote slope = " + this.remote_slope.toString());
+        consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
 
         // Take the average of local and remote slope estimates
         const m = (this.local_slope + 1.0/this.remote_slope) * 0.5;
