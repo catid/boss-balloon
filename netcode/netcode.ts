@@ -347,6 +347,7 @@ export class TimeSync {
     last_remote_ts: u64 = 0;
 
     // Calculated by RecalculateSlope()
+    candidate_slopes: Array<f64> = new Array<f64>(0);
     local_slope: f64 = 1.0;
 
     // r2l_min_trip: Remote send time, and local receive time (with lowest latency)
@@ -374,6 +375,7 @@ export class TimeSync {
         consoleLog("remote_slope = " + this.remote_slope.toString());
         consoleLog("consensus_slope = " + this.consensus_slope.toString());
         consoleLog("samples: " + this.samples.toString());
+        consoleLog("candidate_slopes: " + this.candidate_slopes.toString());
         consoleLog("r2l_min_trip = " + this.r2l_min_trip.toString());
         consoleLog("l2r_min_trip = " + this.l2r_min_trip.toString());
         consoleLog("remote_dy = " + this.remote_dy.toString());
@@ -681,7 +683,7 @@ export class TimeSync {
         // Not enough points to pick a good slope yet
         if (slopes.length <= 2)
         {
-            consoleLog("Not enough slope samples yet: " + slopes.length.toString());
+            //consoleLog("Not enough slope samples yet: " + slopes.length.toString());
 
             if (sample_count < 2) {
                 this.local_slope = 1.0;
@@ -708,11 +710,11 @@ export class TimeSync {
 
             this.local_slope = slope;
 
-            consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
-            consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
-            consoleLog("sample_right.local_ts = " + sample_right.local_ts.toString());
-            consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
-            consoleLog("this.local_slope = " + this.local_slope.toString());
+            //consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
+            //consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
+            //consoleLog("sample_right.local_ts = " + sample_right.local_ts.toString());
+            //consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
+            //consoleLog("this.local_slope = " + this.local_slope.toString());
 
             return;
         }
@@ -823,6 +825,8 @@ export class TimeSync {
             this.local_slope = (neighbor_right + best_slope) * 0.5;
         }
         //consoleLog("this.local_slope = " + this.local_slope.toString());
+
+        this.candidate_slopes = slopes;
     }
 
     OnTimeSample(local_ts: u64, trunc_remote_ts24: u32): void {
