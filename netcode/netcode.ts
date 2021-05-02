@@ -817,14 +817,19 @@ export class TimeSync {
         //consoleLog("neighbor_left = " + neighbor_left.toString());
         //consoleLog("neighbor_right = " + neighbor_right.toString());
 
+        let closest_neighbor = neighbor_right;
         if (abs(neighbor_left - best_slope) < abs(neighbor_right - best_slope)) {
-            //consoleLog("Left closer");
-            this.local_slope = (neighbor_left + best_slope) * 0.5;
-        } else {
-            //consoleLog("Right closer");
-            this.local_slope = (neighbor_right + best_slope) * 0.5;
+            closest_neighbor = neighbor_left;
         }
         //consoleLog("this.local_slope = " + this.local_slope.toString());
+
+        // If closest neighbor is close enough:
+        const kNeighborRadius: f64 = 50.0 / 1000_000.0; // 50 ppm
+        if (abs(closest_neighbor - best_slope) < kNeighborRadius) {
+            this.local_slope = (neighbor_left + best_slope) * 0.5;
+        } else {
+            this.local_slope = best_slope;
+        }
 
         this.candidate_slopes = slopes;
     }
