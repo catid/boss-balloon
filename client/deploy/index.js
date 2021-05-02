@@ -391,14 +391,15 @@ function renderFrame() {
 // WebAssembly Frame Loop
 
 const wasmImports = {
-    client: {
+    netcode: {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
-            setTimeout(() => {
-                console.log(copy);
-            }, 50);
-        },
+            console.log(copy); // sync version
+            //setTimeout(() => { console.log(copy); }, 50); // async version
+        }
+    },
+    client: {
         sendReliable: (buffer) => {
             if (webrtc_reliable != null) {
                 webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));

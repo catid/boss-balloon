@@ -3,9 +3,8 @@
 
 import { RenderContext } from "./gl/RenderContext";
 import { Box3 } from "../node_modules/as-3d-math/src/as/index";
-import { Netcode } from "../netcode/netcode";
+import { Netcode, consoleLog } from "../netcode/netcode";
 
-declare function consoleLog(message: string): void;
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
 declare function playExplosion(): void;

@@ -1,9 +1,8 @@
 //------------------------------------------------------------------------------
 // Imports
 
-import { Netcode } from "../netcode/netcode";
+import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
 
-declare function consoleLog(message: string): void
 declare function sendReliable(id: i32, buffer: Uint8Array): void
 declare function sendUnreliable(id: i32, buffer: Uint8Array): void
 declare function broadcastReliable(exclude_id: i32, buffer: Uint8Array): void
@@ -87,11 +86,13 @@ export class ConnectedClient {
     }
 };
 
-export function OnConnectionOpen(id: i32, now_msec: f64): ConnectedClient | null {
+export function OnConnectionOpen(id: i32): ConnectedClient | null {
     if (IdAssigner.IsFull()) {
         consoleLog("Server full - Connection denied");
         return null;
     }
+
+    const now_msec: f64 = getMilliseconds();
 
     let client = new ConnectedClient(id, now_msec);
     consoleLog("Connection open id=" + client.id.toString());
@@ -184,9 +185,9 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let ping: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            //consoleLog("Ping T = " + ping.toString());
-            //consoleLog("Pong T = " + pong.toString());
-            //consoleLog("Recv T = " + t.toString());
+            consoleLog("Ping T = " + ping.toString());
+            consoleLog("Pong T = " + pong.toString());
+            consoleLog("Recv T = " + t.toString());
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ClientPosition && remaining >= 6) {
@@ -249,7 +250,10 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 //------------------------------------------------------------------------------
 // Message Serializers
 
-export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
+export function SendTimeSync(client: ConnectedClient): void {
+    client.TimeSync.UpdateTimeSync();
+
+    const send_msec: f64 = getMilliseconds();
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(send_msec));
 
     consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());

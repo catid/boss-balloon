@@ -167,7 +167,7 @@ class WebRTCClient {
                 clearTimeout(this.setupTimeout);
                 this.setupTimeout = null;
 
-                this.client = wasmExports.__pin(wasmExports.OnConnectionOpen(this.local_id, performance.now()));
+                this.client = wasmExports.__pin(wasmExports.OnConnectionOpen(this.local_id));
                 if (this.client == null) {
                     console.error("OnConnectionOpen failed");
                     this.Close();
@@ -176,7 +176,7 @@ class WebRTCClient {
 
                 this.syncTimer = setInterval(() => {
                     if (this.client != null) {
-                        wasmExports.SendTimeSync(this.client, performance.now());
+                        wasmExports.SendTimeSync(this.client);
                     }
                 }, 1_000);
             
@@ -188,11 +188,13 @@ class WebRTCClient {
 
                 // Start accepting messages
                 this.dc_unreliable.onMessage((msg) => {
+                    var t_msec = performance.now();
+
                     if (this.client != null) {
                         // Make a copy of the buffer into wasm memory
                         const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, msg));
 
-                        wasmExports.OnUnreliableData(this.client, performance.now(), dataRef);
+                        wasmExports.OnUnreliableData(this.client, t_msec, dataRef);
 
                         // Release resource
                         wasmExports.__unpin(dataRef);
@@ -376,14 +378,18 @@ httpsServer.on('upgrade', function upgrade(request, socket, head) {
 // AssemblyScript
 
 const wasmImports = {
-    server: {
+    netcode: {
         consoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
-            setTimeout(() => {
-                console.log(copy);
-            }, 50);
+            console.log(copy); // sync version
+            //setTimeout(() => { console.log(copy); }, 50); // async version
         },
+        getMilliseconds: () => {
+            return performance.now();
+        }
+    },
+    server: {
         sendReliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
