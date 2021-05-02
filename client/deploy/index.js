@@ -39,16 +39,14 @@ function StopWebsocket() {
 function OnConnectionOpen() {
     wasmExports.OnConnectionOpen(performance.now());
 
-    function dispatchTimeSync() {
+    var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
-        this.syncTimer = setTimeout(() => {
-            if (this.client != null) {
-                wasmExports.SendTimeSync(this.client);
-            }
+        syncTimer = setTimeout(() => {
+            wasmExports.SendTimeSync();
 
             dispatchTimeSync();
         }, 1_000 + variance);
-    }
+    };
     dispatchTimeSync();
 
     reliableSendTimer = setInterval(() => {

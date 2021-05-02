@@ -174,17 +174,17 @@ class WebRTCClient {
                     return;
                 }
 
-                function dispatchTimeSync() {
+                this.dispatchTimeSync = () => {
                     var variance = Math.random() * 20 - 10;
                     this.syncTimer = setTimeout(() => {
                         if (this.client != null) {
                             wasmExports.SendTimeSync(this.client);
                         }
 
-                        dispatchTimeSync();
+                        this.dispatchTimeSync();
                     }, 1_000 + variance);
-                }
-                dispatchTimeSync();
+                };
+                this.dispatchTimeSync();
             
                 this.reliableSendTimer = setInterval(() => {
                     if (this.client != null) {
