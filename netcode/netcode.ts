@@ -601,11 +601,14 @@ export class TimeSync {
 
             const sample_j = this.samples[j];
             const local_dt_j = i32(sample_j.local_ts - sample.local_ts);
-            if (local_dt_j <= 0) {
+            if (local_dt_j == 0) {
                 continue;
             }
 
             const m_j = i32(sample_j.remote_ts - sample.remote_ts) / f64(i32(local_dt_j));
+            if (!isFinite(m_j) || m_j > kMaxSlope || m_j < kMinSlope) {
+                continue;
+            }
             slopes.push(m_j);
 
             consoleLog("*** i = " + i.toString());
@@ -621,11 +624,14 @@ export class TimeSync {
 
             const sample_k = this.samples[k];
             const local_dt_k = i32(sample_k.local_ts - sample.local_ts);
-            if (local_dt_k <= 0) {
+            if (local_dt_k == 0) {
                 continue;
             }
 
             const m_k = i32(sample_k.remote_ts - sample.remote_ts) / f64(i32(local_dt_k));
+            if (!isFinite(m_k) || m_k > kMaxSlope || m_k < kMinSlope) {
+                continue;
+            }
             slopes.push(m_k);
 
             consoleLog("*** i = " + i.toString());
@@ -641,11 +647,14 @@ export class TimeSync {
 
             const sample_l = this.samples[l];
             const local_dt_l = i32(sample_l.local_ts - sample.local_ts);
-            if (local_dt_l <= 0) {
+            if (local_dt_l == 0) {
                 continue;
             }
 
             const m_l = i32(sample_l.remote_ts - sample.remote_ts) / f64(i32(local_dt_l));
+            if (!isFinite(m_l) || m_l > kMaxSlope || m_l < kMinSlope) {
+                continue;
+            }
             slopes.push(m_l);
 
             consoleLog("*** i = " + i.toString());
@@ -666,7 +675,23 @@ export class TimeSync {
 
             const sample_left = this.samples[0];
             const sample_right = this.samples[sample_count - 1];
-            this.local_slope = i32(sample_right.remote_ts - sample_left.remote_ts) / f64(i32(sample_right.local_ts - sample_left.local_ts));
+            if (sample_right.local_ts == sample_left.local_ts) {
+                this.local_slope = 1.0;
+                return;
+            }
+
+            let slope = i32(sample_right.remote_ts - sample_left.remote_ts) / f64(i32(sample_right.local_ts - sample_left.local_ts));
+
+            // Validate slope calculation
+            if (!isFinite(slope)) {
+                slope = 1.0;
+            } else if (slope > kMaxSlope) {
+                slope = kMaxSlope;
+            } else if (slope < kMinSlope) {
+                slope = kMinSlope;
+            }
+
+            this.local_slope = slope;
 
             consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
             consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
@@ -815,14 +840,15 @@ export class TimeSync {
         this.l2r_min_trip.local_ts = min_trip_send_ts;
         this.l2r_min_trip.remote_ts = min_trip_recv_ts;
 
-        if (slope > kMaxSlope) {
+        if (!isFinite(slope)) {
+            slope = 1.0;
+        } else if (slope > kMaxSlope) {
             slope = kMaxSlope;
         } else if (slope < kMinSlope) {
             slope = kMinSlope;
         }
 
         this.remote_slope = slope;
-
         this.is_dirty = true;
 
         consoleLog("peer: min_trip_send_ts = " + min_trip_send_ts.toString());
