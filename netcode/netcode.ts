@@ -482,10 +482,10 @@ export class TimeSync {
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         }
 
-        consoleLog("local_slope = " + this.local_slope.toString());
-        consoleLog("smoothed_local_slope = " + this.smoothed_local_slope.toString());
-        consoleLog("remote_slope = " + this.remote_slope.toString());
-        consoleLog("consensus_slope = " + this.consensus_slope.toString());
+        //consoleLog("local_slope = " + this.local_slope.toString());
+        //consoleLog("smoothed_local_slope = " + this.smoothed_local_slope.toString());
+        //consoleLog("remote_slope = " + this.remote_slope.toString());
+        //consoleLog("consensus_slope = " + this.consensus_slope.toString());
 
         this.is_dirty = false;
     }
@@ -587,7 +587,7 @@ export class TimeSync {
     }
 
     RecalculateSlope(): void {
-        //consoleLog("RecalculateSlope()");
+        consoleLog("RecalculateSlope()");
 
         let slopes: Array<f64> = new Array<f64>(0);
 
@@ -609,10 +609,10 @@ export class TimeSync {
             skip_l = skip_k + 1;
         }
 
-        //consoleLog("sample_count = " + sample_count.toString());
-        //consoleLog("skip_j = " + skip_j.toString());
-        //consoleLog("skip_k = " + skip_k.toString());
-        //consoleLog("skip_l = " + skip_l.toString());
+        consoleLog("sample_count = " + sample_count.toString());
+        consoleLog("skip_j = " + skip_j.toString());
+        consoleLog("skip_k = " + skip_k.toString());
+        consoleLog("skip_l = " + skip_l.toString());
 
         for (let i: i32 = 0; i < sample_count; ++i) {
             const sample = this.samples[i];
@@ -625,15 +625,12 @@ export class TimeSync {
 
             const sample_j = this.samples[j];
             const local_dt_j = i32(sample_j.local_ts - sample.local_ts);
-            if (local_dt_j == 0) {
-                continue;
+            if (local_dt_j != 0) {
+                const m_j = i32(sample_j.remote_ts - sample.remote_ts) / f64(i32(local_dt_j));
+                if (isFinite(m_j) && m_j <= kMaxSlope && m_j >= kMinSlope) {
+                    slopes.push(m_j);
+                }
             }
-
-            const m_j = i32(sample_j.remote_ts - sample.remote_ts) / f64(i32(local_dt_j));
-            if (!isFinite(m_j) || m_j > kMaxSlope || m_j < kMinSlope) {
-                continue;
-            }
-            slopes.push(m_j);
 
             //consoleLog("*** i = " + i.toString());
             //consoleLog("j = " + j.toString());
@@ -648,15 +645,12 @@ export class TimeSync {
 
             const sample_k = this.samples[k];
             const local_dt_k = i32(sample_k.local_ts - sample.local_ts);
-            if (local_dt_k == 0) {
-                continue;
+            if (local_dt_k != 0) {
+                const m_k = i32(sample_k.remote_ts - sample.remote_ts) / f64(i32(local_dt_k));
+                if (isFinite(m_k) && m_k <= kMaxSlope && m_k >= kMinSlope) {
+                    slopes.push(m_k);
+                }
             }
-
-            const m_k = i32(sample_k.remote_ts - sample.remote_ts) / f64(i32(local_dt_k));
-            if (!isFinite(m_k) || m_k > kMaxSlope || m_k < kMinSlope) {
-                continue;
-            }
-            slopes.push(m_k);
 
             //consoleLog("*** i = " + i.toString());
             //consoleLog("k = " + k.toString());
@@ -671,15 +665,12 @@ export class TimeSync {
 
             const sample_l = this.samples[l];
             const local_dt_l = i32(sample_l.local_ts - sample.local_ts);
-            if (local_dt_l == 0) {
-                continue;
+            if (local_dt_l != 0) {
+                const m_l = i32(sample_l.remote_ts - sample.remote_ts) / f64(i32(local_dt_l));
+                if (isFinite(m_l) && m_l <= kMaxSlope && m_l >= kMinSlope) {
+                    slopes.push(m_l);
+                }
             }
-
-            const m_l = i32(sample_l.remote_ts - sample.remote_ts) / f64(i32(local_dt_l));
-            if (!isFinite(m_l) || m_l > kMaxSlope || m_l < kMinSlope) {
-                continue;
-            }
-            slopes.push(m_l);
 
             //consoleLog("*** i = " + i.toString());
             //consoleLog("l = " + l.toString());
