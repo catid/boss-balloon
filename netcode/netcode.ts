@@ -174,7 +174,7 @@ export function MsecToTime(msec: f64): u64 {
     return u64((msec - netcode_start_msec) * 4.0) & ~(u64(1) << 63);
 }
 
-const kSyncWindowLength: u64 = 4 * 10_0000; // 10 seconds in our time units
+const kSyncWindowLength: u64 = 4 * 10_000; // 10 seconds in our time units
 
 
 //------------------------------------------------------------------------------
@@ -316,16 +316,22 @@ function TS24ExpandFromTruncatedWithBias(recent: u64, trunc24: u32): u64 {
 }
 
 class SampleTS24 {
-    remote_ts: u64;
     local_ts: u64;
+    remote_ts: u64;
 
     constructor(local_ts: u64 = 0, remote_ts: u64 = 0) {
+        this.local_ts = local_ts;
+        this.remote_ts = remote_ts;
     }
 
     IsTimeoutExpired(now: u64, timeout: u64): bool {
         return u64(now - this.local_ts) > timeout;
     }
 }
+
+// Bound the slope estimates to a reasonable range
+const kMaxSlope = 1.0 + 3000.0 / 1000_000.0;
+const kMinSlope = 1.0 - 3000.0 / 1000_000.0;
 
 export class TimeSync {
     samples: Array<SampleTS24> = new Array<SampleTS24>(0);
@@ -373,12 +379,14 @@ export class TimeSync {
         // Recalculate our best estimate of the shortest one-way trip
         this.RecalculateMinTrip();
 
-        // Take the average of local and remote slope estimates
-        const m = (this.local_slope + this.remote_slope) * 0.5;
-        this.consensus_slope = m;
-
         consoleLog("local slope = " + this.local_slope.toString());
         consoleLog("remote slope = " + this.remote_slope.toString());
+        consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
+
+        // Take the average of local and remote slope estimates
+        const m = (this.local_slope + 1.0/this.remote_slope) * 0.5;
+        this.consensus_slope = m;
+
         consoleLog("consensus slope = " + m.toString());
 
         // Note that each has an unknown trip time, but we assume
@@ -424,7 +432,10 @@ export class TimeSync {
             consoleLog("dx = " + dx.toString());
 
             // Calculate delta from local time when remote probe was sent remotely
-            this.local_dx = this.r2l_min_trip.local_ts - (dx - i32(dy / m)) / 2;
+            const owd = (dx - i32(dy / m)) / 2;
+            this.local_dx = this.r2l_min_trip.local_ts - owd;
+
+            consoleLog("owd = " + owd.toString());
 
             consoleLog("this.local_dx = " + this.local_dx.toString());
         } else {
@@ -442,10 +453,15 @@ export class TimeSync {
             consoleLog("dx = " + dx.toString());
 
             // Calculate delta from local time when local probe was received remotely
-            this.local_dx = this.l2r_min_trip.local_ts - (dx - i32(dy / m)) / 2;
+            const owd = (dx - i32(dy / m)) / 2;
+            this.local_dx = this.l2r_min_trip.local_ts - owd;
+
+            consoleLog("owd = " + owd.toString());
 
             consoleLog("this.local_dx = " + this.local_dx.toString());
         }
+
+        this.is_dirty = false;
     }
 
     // To convert from remote to local:
@@ -466,12 +482,15 @@ export class TimeSync {
     DiscardOld(now_ts: u64): void {
         consoleLog("DiscardOld()");
 
-        // While at least two samples remain:
-        while (this.samples.length >= 2) {
+        // While at least 3 samples remain, so we can calculate a slope:
+        while (this.samples.length >= 3) {
             // If the first one is still fresh:
-            if (u64(now_ts - this.samples[0].local_ts) < kSyncWindowLength) {
+            const age: u64 = u64(now_ts - this.samples[0].local_ts);
+            consoleLog("next oldest age = " + age.toString());
+            if (age < kSyncWindowLength) {
                 // Note that if samples arrive out of order this does not work,
                 // but we assume that is rare enough to not skew the calculations.
+                consoleLog("age = " + age.toString() + " < len = " + kSyncWindowLength.toString());
                 break; // Stop here
             }
 
@@ -480,6 +499,8 @@ export class TimeSync {
 
             // Shift off the first one
             this.samples.shift();
+
+            this.is_dirty = true;
         }
     }
 
@@ -547,19 +568,27 @@ export class TimeSync {
         let slopes: Array<f64> = new Array<f64>(0);
 
         const sample_count: i32 = this.samples.length;
+
+        // Regularly sample 3 offsets from each sample to discover candidate slopes
         let skip_j: i32 = sample_count / 4;
         if (skip_j < 1) {
             skip_j = 1;
         }
-        let skip_k: i32 = sample_count / 2;
+        let skip_k: i32 = sample_count * 3 / 8;
         if (skip_k <= skip_j) {
             // Make sure we do not sample the same points twice
             skip_k = skip_j + 1;
+        }
+        let skip_l: i32 = sample_count / 2;
+        if (skip_l <= skip_k) {
+            // Make sure we do not sample the same points twice
+            skip_l = skip_k + 1;
         }
 
         consoleLog("sample_count = " + sample_count.toString());
         consoleLog("skip_j = " + skip_j.toString());
         consoleLog("skip_k = " + skip_k.toString());
+        consoleLog("skip_l = " + skip_l.toString());
 
         for (let i: i32 = 0; i < sample_count; ++i) {
             const sample = this.samples[i];
@@ -603,6 +632,26 @@ export class TimeSync {
             consoleLog("k = " + k.toString());
             consoleLog("local_dt_k = " + local_dt_k.toString());
             consoleLog("m_k = " + m_k.toString());
+
+            // Skip further:
+            const l = i + skip_l;
+            if (l >= sample_count) {
+                continue;
+            }
+
+            const sample_l = this.samples[l];
+            const local_dt_l = i32(sample_l.local_ts - sample.local_ts);
+            if (local_dt_l <= 0) {
+                continue;
+            }
+
+            const m_l = i32(sample_l.remote_ts - sample.remote_ts) / f64(i32(local_dt_l));
+            slopes.push(m_l);
+
+            consoleLog("*** i = " + i.toString());
+            consoleLog("l = " + l.toString());
+            consoleLog("local_dt_l = " + local_dt_l.toString());
+            consoleLog("m_l = " + m_l.toString());
         }
 
         // Not enough points to pick a good slope yet
@@ -746,6 +795,8 @@ export class TimeSync {
         let sample: SampleTS24 = new SampleTS24(local_ts, remote_ts);
         this.samples.push(sample);
 
+        this.is_dirty = true;
+
         consoleLog("sample count after = " + this.samples.length.toString());
         consoleLog("test: " + this.samples[0].local_ts.toString());
     }
@@ -763,11 +814,20 @@ export class TimeSync {
         // Store info
         this.l2r_min_trip.local_ts = min_trip_send_ts;
         this.l2r_min_trip.remote_ts = min_trip_recv_ts;
+
+        if (slope > kMaxSlope) {
+            slope = kMaxSlope;
+        } else if (slope < kMinSlope) {
+            slope = kMinSlope;
+        }
+
         this.remote_slope = slope;
 
-        consoleLog("min_trip_send_ts = " + min_trip_send_ts.toString());
-        consoleLog("min_trip_recv_ts = " + min_trip_recv_ts.toString());
-        consoleLog("slope = " + slope.toString());
+        this.is_dirty = true;
+
+        consoleLog("peer: min_trip_send_ts = " + min_trip_send_ts.toString());
+        consoleLog("peer: min_trip_recv_ts = " + min_trip_recv_ts.toString());
+        consoleLog("peer: slope = " + slope.toString());
 
         // Get rid of samples that are old
         this.DiscardOld(local_ts);
