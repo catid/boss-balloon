@@ -174,7 +174,7 @@ export function MsecToTime(msec: f64): u64 {
     return u64((msec - netcode_start_msec) * 4.0) & ~(u64(1) << 63);
 }
 
-const kSyncWindowLength: u64 = 4 * 10_000; // 10 seconds in our time units
+const kSyncWindowLength: u64 = 4 * 30_000; // 30 seconds in our time units
 
 
 //------------------------------------------------------------------------------
@@ -679,53 +679,9 @@ export class TimeSync {
             //consoleLog("m_l = " + m_l.toString());
         }
 
-        // Not enough points to pick a good slope yet
-        if (slopes.length <= 2)
-        {
-            if (this.found_supported_slope_estimate) {
-                // It's much better to just give up than to try to make do with bad data.
-                // The slope doesn't change very often so there is no rush to come up with
-                // a new estimate after we have found one.
-                return;
-            }
-
-            //consoleLog("Not enough slope samples yet: " + slopes.length.toString());
-
-            if (sample_count < 2) {
-                this.local_slope = 1.0;
-                return;
-            }
-
-            const sample_left = this.samples[0];
-            const sample_right = this.samples[sample_count - 1];
-            if (sample_right.local_ts == sample_left.local_ts) {
-                this.local_slope = 1.0;
-                return;
-            }
-
-            let slope = i32(sample_right.remote_ts - sample_left.remote_ts) / f64(i32(sample_right.local_ts - sample_left.local_ts));
-
-            // Validate slope calculation
-            if (!isFinite(slope)) {
-                slope = 1.0;
-            } else if (slope > kMaxSlope) {
-                slope = kMaxSlope;
-            } else if (slope < kMinSlope) {
-                slope = kMinSlope;
-            }
-
-            this.local_slope = slope;
-            this.found_supported_slope_estimate = true;
-
-            //consoleLog("sample_left.local_ts = " + sample_left.local_ts.toString());
-            //consoleLog("sample_left.remote_ts = " + sample_left.remote_ts.toString());
-            //consoleLog("sample_right.local_ts = " + sample_right.local_ts.toString());
-            //consoleLog("sample_right.remote_ts = " + sample_right.remote_ts.toString());
-            //consoleLog("this.local_slope = " + this.local_slope.toString());
-
-            this.candidate_slopes.length = 0;
-            this.candidate_slopes.push(slope);
-
+        const slope_count: i32 = slopes.length;
+        if (slope_count < 10) {
+            // Not enough points to pick a good slope yet
             return;
         }
 
@@ -733,111 +689,19 @@ export class TimeSync {
 
         //consoleLog("slopes = " + slopes.toString());
 
-        /*
-            Score for locality using a triangle filter:
-
-                   1
-                   /\
-                  /  \
-                 /    \
-            ____/      \____0
-                |------|
-                100 ppm span
-        */
-
-        let best_score: f64 = 0.0;
-        let best_slope: f64 = 0.0;
-        let best_slope_i: i32 = 0;
-        const kSlopeRadius: f64 = 50.0 /1000_000.0; // 50 ppm
-
-        // Check score for each candidate slope
-        const slope_count: i32 = slopes.length;
-        for (let i: i32 = 0; i < slope_count; ++i) {
-            let score: f64 = 0.0;
-            const slope: f64 = slopes[i];
-
-            // Score forward up to 10 values until radius is hit
-            for (let offset: i32 = 1; offset < 10; ++offset) {
-                const j: i32 = i + offset;
-                if (j >= slope_count) {
-                    break; // Hit edge: done
-                }
-
-                const slope_j = slopes[j];
-                const slope_delta = slope_j - slope;
-                if (slope_delta >= kSlopeRadius) {
-                    break; // Hit radius: Done
-                }
-
-                score += kSlopeRadius - slope_delta;
-            }
-
-            // Score backward down to 10 values until radius is hit
-            for (let offset: i32 = 1; offset < 10; ++offset) {
-                const j: i32 = i - offset;
-                if (j < 0) {
-                    break; // Hit edge: done
-                }
-
-                const slope_j = slopes[j];
-                const slope_delta = slope - slope_j;
-                if (slope_delta >= kSlopeRadius) {
-                    break; // Hit radius: Done
-                }
-
-                score += kSlopeRadius - slope_delta;
-            }
-
-            //consoleLog("slope = " + slope.toString() + " : score = " + score.toString());
-
-            if (score > best_score) {
-                best_score = score;
-                best_slope = slope;
-                best_slope_i = i;
-                //consoleLog("^ Best slope " + i.toString());
-            }
-        }
-
-        // If none of the slopes scored any points for neighbors,
-        // just pick the median.  This happens during startup when there
-        // are not many data-points yet.
-        if (best_score <= 0.0) {
-            if (this.found_supported_slope_estimate) {
-                // It's much better to just give up than to try to make do with bad data.
-                // The slope doesn't change very often so there is no rush to come up with
-                // a new estimate after we have found one.
-                return;
-            }
-
-            best_slope_i = slope_count / 2;
-            best_slope = slopes[best_slope_i];
-        }
+        const best_slope_i = slope_count / 2;
+        const best_slope = slopes[best_slope_i];
 
         // Refine by averaging the best slope with its closest neighbor
-        let neighbor_left: f64 = best_slope;
-        let neighbor_right: f64 = best_slope;
-        if (best_slope_i > 0) {
-            neighbor_left = slopes[best_slope_i - 1];
-            if (best_slope_i + 1 < slope_count) {
-                neighbor_right = slopes[best_slope_i + 1];
-            } else {
-                neighbor_right = neighbor_left;
-            }
-        } else {
-            if (best_slope_i + 1 < slope_count) {
-                neighbor_right = slopes[best_slope_i + 1];
-            }
-            neighbor_left = neighbor_right;
+        let neighbor_left: f64 = slopes[best_slope_i - 1];
+        let closest_neighbor = slopes[best_slope_i + 1];
+        if (abs(neighbor_left - best_slope) < abs(closest_neighbor - best_slope)) {
+            closest_neighbor = neighbor_left;
         }
 
         //consoleLog("best_slope = " + best_slope.toString());
         //consoleLog("neighbor_left = " + neighbor_left.toString());
         //consoleLog("neighbor_right = " + neighbor_right.toString());
-
-        let closest_neighbor = neighbor_right;
-        if (abs(neighbor_left - best_slope) < abs(neighbor_right - best_slope)) {
-            closest_neighbor = neighbor_left;
-        }
         //consoleLog("this.local_slope = " + this.local_slope.toString());
 
         // If closest neighbor is close enough:
