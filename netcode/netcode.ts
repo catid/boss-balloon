@@ -482,9 +482,10 @@ export class TimeSync {
             //consoleLog("this.local_dx = " + this.local_dx.toString());
         }
 
-        //consoleLog("local_slope = " + this.local_slope.toString());
+        consoleLog("candidate slopes: " + this.candidate_slopes.toString());
+        consoleLog("local_slope = " + this.local_slope.toString());
         //consoleLog("smoothed_local_slope = " + this.smoothed_local_slope.toString());
-        //consoleLog("remote_slope = " + this.remote_slope.toString());
+        consoleLog("remote_slope = " + this.remote_slope.toString());
         //consoleLog("consensus_slope = " + this.consensus_slope.toString());
 
         this.is_dirty = false;
@@ -587,7 +588,7 @@ export class TimeSync {
     }
 
     RecalculateSlope(): void {
-        consoleLog("RecalculateSlope()");
+        //consoleLog("RecalculateSlope()");
 
         let slopes: Array<f64> = new Array<f64>(0);
 
@@ -609,10 +610,10 @@ export class TimeSync {
             skip_l = skip_k + 1;
         }
 
-        consoleLog("sample_count = " + sample_count.toString());
-        consoleLog("skip_j = " + skip_j.toString());
-        consoleLog("skip_k = " + skip_k.toString());
-        consoleLog("skip_l = " + skip_l.toString());
+        //consoleLog("sample_count = " + sample_count.toString());
+        //consoleLog("skip_j = " + skip_j.toString());
+        //consoleLog("skip_k = " + skip_k.toString());
+        //consoleLog("skip_l = " + skip_l.toString());
 
         for (let i: i32 = 0; i < sample_count; ++i) {
             const sample = this.samples[i];
