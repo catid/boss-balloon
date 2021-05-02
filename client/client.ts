@@ -200,9 +200,13 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            consoleLog("Ping T = " + ping.toString());
-            consoleLog("Pong T = " + pong.toString());
-            consoleLog("Recv T = " + t.toString());
+            if (pong < ping || t < pong) {
+                consoleLog("*** TEST FAILED!");
+                consoleLog("Ping T = " + ping.toString());
+                consoleLog("Pong T = " + pong.toString());
+                consoleLog("Recv T = " + t.toString());
+                TimeSync.DumpState();
+            }
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {

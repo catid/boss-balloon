@@ -327,6 +327,10 @@ class SampleTS24 {
     IsTimeoutExpired(now: u64, timeout: u64): bool {
         return u64(now - this.local_ts) > timeout;
     }
+
+    toString(): string {
+        return "{ local_ts=" + this.local_ts.toString() + ", remote_ts=" + this.remote_ts.toString() + " }";
+    }
 }
 
 // Bound the slope estimates to a reasonable range
@@ -365,6 +369,17 @@ export class TimeSync {
     constructor() {
     }
 
+    DumpState(): void {
+        consoleLog("local_slope = " + this.local_slope.toString());
+        consoleLog("remote_slope = " + this.remote_slope.toString());
+        consoleLog("consensus_slope = " + this.consensus_slope.toString());
+        consoleLog("samples: " + this.samples.toString());
+        consoleLog("r2l_min_trip = " + this.r2l_min_trip.toString());
+        consoleLog("l2r_min_trip = " + this.l2r_min_trip.toString());
+        consoleLog("remote_dy = " + this.remote_dy.toString());
+        consoleLog("local_dx = " + this.local_dx.toString());
+    }
+
     // Update time sync with latest information
     UpdateTimeSync(): void {
         //consoleLog("UpdateTimeSync()");
@@ -379,9 +394,9 @@ export class TimeSync {
         // Recalculate our best estimate of the shortest one-way trip
         this.RecalculateMinTrip();
 
-        consoleLog("local slope = " + this.local_slope.toString());
-        consoleLog("remote slope = " + this.remote_slope.toString());
-        consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
+        //consoleLog("local slope = " + this.local_slope.toString());
+        //consoleLog("remote slope = " + this.remote_slope.toString());
+        //consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
 
         // Take the average of local and remote slope estimates
         const m = (this.local_slope + 1.0/this.remote_slope) * 0.5;
