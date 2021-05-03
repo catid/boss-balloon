@@ -35,7 +35,7 @@
     "as-bitray": "^2.4.8",
     "assemblyscript": "^0.18.27",
     "express": "^4.17.1",
-    "node-datachannel": "^0.1.2",
+    "node-datachannel": "murat-dogan/node-datachannel",
     "rezidb": "^1.0.1",
     "ws": "^7.4.5"
   }
