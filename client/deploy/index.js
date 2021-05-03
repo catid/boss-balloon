@@ -44,7 +44,7 @@ function OnConnectionOpen() {
     var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
         syncTimer = setTimeout(() => {
-            wasmExports.SendTimeSync(performance.now());
+            wasmExports.SendTimeSync();
 
             dispatchTimeSync();
         }, timeSyncInterval + variance);
@@ -409,6 +409,9 @@ const wasmImports = {
             var copy = wasmExports.__getString(m);
             //console.log(copy); // sync version
             setTimeout(() => { console.log(copy); }, 50); // async version
+        },
+        getMilliseconds: () => {
+            return performance.now();
         }
     },
     client: {

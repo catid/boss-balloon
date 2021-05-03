@@ -77,12 +77,12 @@ export class ConnectedClient {
     team: u8 = 0;
 
     TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
-
     MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
+    TimeConverter: Netcode.TimeConverter;
 
     constructor(id: i32, netcode_start_msec: f64) {
         this.id = id;
-        this.netcode_start_msec = netcode_start_msec;
+        this.TimeConverter = new Netcode.TimeConverter(netcode_start_msec);
     }
 };
 
@@ -101,7 +101,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     client.name = "Player " + client.player_id.toString();
     client.score = 100;
 
-    SendTimeSync(client);
+    SendTimeSync(client, now_msec);
 
     sendReliable(client.id, Netcode.MakeSetId(client.player_id));
 
@@ -159,7 +159,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = Netcode.MsecToTime(recv_msec);
+    let t: u64 = client.TimeConverter.MsecToTime(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -258,8 +258,6 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 export function SendTimeSync(client: ConnectedClient): void {
     client.TimeSync.UpdateTimeSync();
 
-    const send_msec: f64 = getMilliseconds();
-    sendUnreliable(client.id, client.TimeSync.MakeTimeSync(send_msec));
-
-    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    const send_msec = getMilliseconds();
+    sendUnreliable(client.id, client.TimeSync.MakeTimeSync(client.TimeConverter.MsecToTime(send_msec)));
 }

@@ -161,20 +161,25 @@ export function Load24(ptr: usize, offset: usize): u32 {
 //------------------------------------------------------------------------------
 // Time Units
 
-// For netcode we use timestamps relative to the connection open time, because
-// we waste fewer mantissa bits on useless huge values.
-let netcode_start_msec: f64 = 0;
+// LSB = 1/4 of a millisecond
 
-export function SetStartMsec(msec: f64): void {
-    netcode_start_msec = msec;
+export class TimeConverter {
+    // For netcode we use timestamps relative to the connection open time, because
+    // we waste fewer mantissa bits on useless huge values.
+    netcode_start_msec: f64 = 0;
+
+    constructor(netcode_start_msec: f64) {
+        this.netcode_start_msec = netcode_start_msec;
+    }
+
+    // Convert to internal integer time units from floating point performance.now() units
+    MsecToTime(t_msec: f64): u64 {
+        return u64((t_msec - this.netcode_start_msec) * 4.0) & ~(u64(1) << 63);
+    }
 }
 
-// Convert to internal integer time units from floating point performance.now() units
-export function MsecToTime(msec: f64): u64 {
-    return u64((msec - netcode_start_msec) * 4.0) & ~(u64(1) << 63);
-}
-
-const kSyncWindowLength: u64 = 4 * 30_000; // 30 seconds in our time units
+// Time interval between slope samples
+const kSlopeSampleBinWidth: u64 = 4 * 1_000; // 1 second in our time units
 
 
 //------------------------------------------------------------------------------
@@ -334,13 +339,17 @@ class SampleTS24 {
 }
 
 // Bound the slope estimates to a reasonable range
-const kMaxSlope = 1.0 + 3000.0 / 1000_000.0;
-const kMinSlope = 1.0 - 3000.0 / 1000_000.0;
+const kMaxSlope = 1.0 + 3000.0 / 1000_000.0; // +3000 ppm
+const kMinSlope = 1.0 - 3000.0 / 1000_000.0; // -3000 ppm
+
+// Minimum slope samples before providing first estimate
+const kSlopeSampleCountMin: i32 = 60; // 60 seconds of data
+
+// Maximum slope samples
+const kSlopeSampleCountMax: i32 = 100; // 100 seconds of data
 
 export class TimeSync {
     samples: Array<SampleTS24> = new Array<SampleTS24>(0);
-
-    // Set to true if time sync estimates can be updated
     is_dirty: bool = false;
 
     // Used to hallucinate the upper bits of peer timestamps
@@ -726,18 +735,10 @@ export class TimeSync {
             this.last_remote_ts = remote_ts;
         }
 
-        //consoleLog("local_ts = " + local_ts.toString());
-        //consoleLog("remote_ts = " + remote_ts.toString());
-        //consoleLog("this.last_remote_ts = " + this.last_remote_ts.toString());
-        //consoleLog("sample count before = " + this.samples.length.toString());
-
         let sample: SampleTS24 = new SampleTS24(local_ts, remote_ts);
         this.samples.push(sample);
 
         this.is_dirty = true;
-
-        //consoleLog("sample count after = " + this.samples.length.toString());
-        //consoleLog("test: " + this.samples[0].local_ts.toString());
     }
 
     // Peer provides, for the best probe we have sent so far:
@@ -806,12 +807,9 @@ export class TimeSync {
         return TS23ExpandFromTruncatedWithBias(local_ts, local_ts23 & 0x7fffff);
     }
 
-    MakeTimeSync(send_msec: f64): Uint8Array {
+    MakeTimeSync(send_ts: u64): Uint8Array {
         let buffer: Uint8Array = new Uint8Array(18);
         let ptr: usize = buffer.dataStart;
-
-        // Convert timestamp to integer with 1/4 msec (desired) precision
-        let send_ts: u64 = MsecToTime(send_msec);
 
         store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
         // Send timestamp

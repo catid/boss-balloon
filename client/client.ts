@@ -3,7 +3,7 @@
 
 import { RenderContext } from "./gl/RenderContext";
 import { Box3 } from "../node_modules/as-3d-math/src/as/index";
-import { Netcode, consoleLog } from "../netcode/netcode";
+import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -16,6 +16,7 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
+let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
 
 
 //------------------------------------------------------------------------------
@@ -123,7 +124,7 @@ export function RenderFrame(
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = Netcode.MsecToTime(now_msec);
+    let t: u64 = TimeConverter.MsecToTime(now_msec);
 
     //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
 
@@ -138,12 +139,13 @@ export function RenderFrame(
 export function OnConnectionOpen(now_msec: f64): void {
     consoleLog("UDP link up");
 
-    Netcode.SetStartMsec(now_msec);
+    TimeConverter = new Netcode.TimeConverter(now_msec);
+
     player_map.clear();
     SelfId = -1;
     TimeSync = new Netcode.TimeSync();
 
-    SendTimeSync(now_msec);
+    SendTimeSync();
 
     let chat = Netcode.MakeChatRequest("Hello World");
     if (chat != null) {
@@ -175,7 +177,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = Netcode.MsecToTime(recv_msec);
+    let t: u64 = TimeConverter.MsecToTime(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -362,8 +364,9 @@ export function SendChatRequest(m: string): i32 {
     return 0;
 }
 
-export function SendTimeSync(send_msec: f64): void {
-    sendUnreliable(TimeSync.MakeTimeSync(send_msec));
+export function SendTimeSync(): void {
+    TimeSync.UpdateTimeSync();
 
-    consoleLog("*** Send Ping T = " + Netcode.MsecToTime(send_msec).toString());
+    const send_msec = getMilliseconds();
+    sendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
 }
