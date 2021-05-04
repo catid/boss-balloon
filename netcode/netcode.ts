@@ -441,6 +441,8 @@ export class TimeSync {
             const new_send_ts = this.TransformRemoteToLocal(remote_ts);
             const new_owd = i64(local_ts - new_send_ts);
 
+            consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString + " slope=" + this.consensus_slope);
+
             // If the new trip time looks worse:
             if (new_owd > old_owd) {
                 const age = i32(local_ts - this.incoming_min_trip.local_ts);
@@ -453,6 +455,7 @@ export class TimeSync {
 
                 // If the previous min-trip is not aging:
                 if (age < window) {
+                    consoleLog("New trip time is worse, and old one hasn't aged out.");
                     return false;
                 }
 
@@ -460,10 +463,13 @@ export class TimeSync {
 
                 // If uncertainty is low:
                 if (new_owd > old_owd + uncertainty) {
+                    consoleLog("New trip time is worse, and uncertainty is low.");
                     return false;
                 }
             }
         }
+
+        consoleLog("New one is better.");
 
         // Base transform on the new point
         this.incoming_min_trip.Set(local_ts, remote_ts);
@@ -476,8 +482,6 @@ export class TimeSync {
     // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
     // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
     OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f32): void {
-        consoleLog("OnPeerSync()");
-
         this.outgoing_min_trip.local_ts = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
         this.outgoing_min_trip.remote_ts = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
 
@@ -520,6 +524,8 @@ export class TimeSync {
             this.samples.shift();
         }
 
+        const t0 = getMilliseconds();
+
         let slopes: Array<f32> = new Array<f32>(0);
 
         const sample_count = this.samples.length;
@@ -538,6 +544,7 @@ export class TimeSync {
         }
 
         if (slopes.length < 50) {
+            consoleLog("Too few slopes");
             return;
         }
 
@@ -557,6 +564,9 @@ export class TimeSync {
         this.inv_consensus_slope = 1.0 / this.consensus_slope;
 
         this.has_slope_estimate = true;
+
+        const t1 = getMilliseconds();
+        consoleLog("Updated slope estimate in " + (t1 - t0).toString() + " msec");
     }
 
     // Takes in a 23-bit timestamp in peer's clock domain,
