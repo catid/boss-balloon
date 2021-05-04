@@ -441,7 +441,7 @@ export class TimeSync {
             const new_send_ts = this.TransformRemoteToLocal(remote_ts);
             const new_owd = i64(local_ts - new_send_ts);
 
-            consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString + " slope=" + this.consensus_slope);
+            consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
 
             // If the new trip time looks worse:
             if (new_owd > old_owd) {
