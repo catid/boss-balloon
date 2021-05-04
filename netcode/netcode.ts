@@ -513,12 +513,12 @@ export class TimeSync {
 
         // Note: We assume one probe per second
 
-        if (this.samples.length < 100) {
-            consoleLog("Waiting for 100 samples: " + this.samples.length.toString());
+        if (this.samples.length < 50) {
+            consoleLog("Waiting for 50 samples: " + this.samples.length.toString());
             return;
         }
 
-        if (this.samples.length > 200) {
+        if (this.samples.length > 100) {
             this.samples.shift();
         }
 
@@ -531,7 +531,7 @@ export class TimeSync {
         for (let i: i32 = 0; i < split_i; ++i) {
             const sample_i = this.samples[i];
 
-            for (let j: i32 = i + 50; j < sample_count; ++j) {
+            for (let j: i32 = i + sample_count / 2; j < sample_count; ++j) {
                 const sample_j = this.samples[j];
 
                 const m = f32(i32(sample_j.remote_ts - sample_i.remote_ts)) / f32(i32(sample_j.local_ts - sample_i.local_ts));
