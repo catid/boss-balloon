@@ -476,6 +476,8 @@ export class TimeSync {
     // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
     // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
     OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f32): void {
+        consoleLog("OnPeerSync()");
+
         this.outgoing_min_trip.local_ts = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
         this.outgoing_min_trip.remote_ts = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
 
