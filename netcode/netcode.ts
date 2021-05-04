@@ -26,7 +26,7 @@ export const kMaxPacketBytes: i32 = 1100;
     [UnreliableType.TimeSync(1 byte)]
     [Local-24bit-SendTimestamp(3 bytes)]
     [min_trip_send_ts24_trunc(3 bytes)] [min_trip_recv_ts24_trunc(3 bytes)]
-    [ClockDriftSlope(8 bytes)]
+    [ClockDriftSlope(4 bytes)]
     Sent once a second by both sides.  Used to establish time sync.
     Includes a send timestamp for additional data points.
     Includes the probe received from remote peer we estimate had the shorted trip time,
@@ -178,9 +178,6 @@ export class TimeConverter {
     }
 }
 
-// Time interval between slope samples
-const kSlopeSampleBinWidth: u64 = 4 * 1_000; // 1 second in our time units
-
 
 //------------------------------------------------------------------------------
 // Message Combiner
@@ -320,7 +317,7 @@ function TS24ExpandFromTruncatedWithBias(recent: u64, trunc24: u32): u64 {
     return result;
 }
 
-class SampleTS24 {
+class SampleTrip {
     local_ts: u64;
     remote_ts: u64;
 
@@ -328,432 +325,158 @@ class SampleTS24 {
         this.local_ts = local_ts;
         this.remote_ts = remote_ts;
     }
-
+    Set(local_ts: u64 = 0, remote_ts: u64 = 0): void {
+        this.local_ts = local_ts;
+        this.remote_ts = remote_ts;
+    }
     IsTimeoutExpired(now: u64, timeout: u64): bool {
         return u64(now - this.local_ts) > timeout;
     }
-
     toString(): string {
         return "{ local_ts=" + this.local_ts.toString() + ", remote_ts=" + this.remote_ts.toString() + " }";
     }
 }
 
 // Bound the slope estimates to a reasonable range
-const kMaxSlope = 1.0 + 3000.0 / 1000_000.0; // +3000 ppm
-const kMinSlope = 1.0 - 3000.0 / 1000_000.0; // -3000 ppm
-
-// Minimum slope samples before providing first estimate
-const kSlopeSampleCountMin: i32 = 60; // 60 seconds of data
-
-// Maximum slope samples
-const kSlopeSampleCountMax: i32 = 100; // 100 seconds of data
+const kMaxSlope = 1.003; // +3000 ppm
+const kMinSlope = 0.997; // -3000 ppm
 
 export class TimeSync {
-    samples: Array<SampleTS24> = new Array<SampleTS24>(0);
-    is_dirty: bool = false;
-
     // Used to hallucinate the upper bits of peer timestamps
     last_remote_ts: u64 = 0;
 
-    // Calculated by RecalculateSlope()
-    candidate_slopes: Array<f64> = new Array<f64>(0);
-    local_slope: f64 = 1.0;
-    smoothed_local_slope: f64 = 1.0;
-    found_supported_slope_estimate: bool = false;
-
-    // r2l_min_trip: Remote send time, and local receive time (with lowest latency)
-    r2l_min_trip: SampleTS24 = new SampleTS24(0, 0);
+    // incoming_min_trip: Remote send time, and local receive time (with lowest latency)
+    incoming_min_trip: SampleTrip = new SampleTrip(0, 0);
+    has_first_measurement: bool = false;
 
     // Provided by peer
-    remote_slope: f64 = 1.0;
-
-    // Provided by peer
-    // l2r_min_trip: Local send time, and remote receive time (with lowest latency)
-    l2r_min_trip: SampleTS24 = new SampleTS24(0, 0);
-
-    // Average of local and remote slopes
-    consensus_slope: f64 = 1.0;
+    // outgoing_min_trip: Local send time, and remote receive time (with lowest latency)
+    outgoing_min_trip: SampleTrip = new SampleTrip(0, 0);
+    remote_slope: f32 = 1.0;
+    has_remote_sync: bool = false;
 
     // X/Y intercept for remote timestamp drift correction to local tick rate
     remote_dy: i64 = 0;
     local_dx: i64 = 0;
+    has_transform: bool = false;
+
+    // incoming_min_trip recorded at regular intervals
+    samples: Array<SampleTrip> = new Array<SampleTrip>(0);
+
+    // Calculated from samples
+    local_slope: f32 = 1.0;
+
+    // Average of local slope and inverse remote slope
+    consensus_slope: f32 = 1.0;
+    slope_uncertainty: f32 = 0.002;
+    has_slope_estimate: bool = false;
 
     constructor() {
     }
 
     DumpState(): void {
+        // FIXME
         consoleLog("local_slope = " + this.local_slope.toString());
         consoleLog("remote_slope = " + this.remote_slope.toString());
         consoleLog("consensus_slope = " + this.consensus_slope.toString());
+        consoleLog("slope_uncertainty = " + this.slope_uncertainty.toString());
         consoleLog("samples: " + this.samples.toString());
-        consoleLog("candidate_slopes: " + this.candidate_slopes.toString());
-        consoleLog("r2l_min_trip = " + this.r2l_min_trip.toString());
-        consoleLog("l2r_min_trip = " + this.l2r_min_trip.toString());
+        consoleLog("incoming_min_trip = " + this.incoming_min_trip.toString());
+        consoleLog("outgoing_min_trip = " + this.outgoing_min_trip.toString());
         consoleLog("remote_dy = " + this.remote_dy.toString());
         consoleLog("local_dx = " + this.local_dx.toString());
     }
 
-    // Update time sync with latest information
-    UpdateTimeSync(): void {
-        //consoleLog("UpdateTimeSync()");
-        if (!this.is_dirty) {
-            //consoleLog("Not dirty");
+    // Update how we transform from remote to local timestamps,
+    // based on the incoming_min_trip and outgoing_min_trip.
+    UpdateTransform(): void {
+        if (!this.has_remote_sync) {
+            // Cannot estimate OWD yet
+            this.local_dx = i64(this.incoming_min_trip.local_ts - this.incoming_min_trip.remote_ts);
+            this.remote_dy = 0;
             return;
         }
 
-        // Recalculate our slope estimate from one-way data from peer
-        this.RecalculateSlope();
-
-        // EWMA smoothing for our slope estimate
-        this.smoothed_local_slope = this.smoothed_local_slope * 0.9 + this.local_slope * 0.1;
-
-        //consoleLog("local slope = " + this.local_slope.toString());
-        //consoleLog("remote slope = " + this.remote_slope.toString());
-        //consoleLog("inv remote slope = " + (1.0 / this.remote_slope).toString());
-
-        // Take the average of local and remote slope estimates
-        this.consensus_slope = (this.smoothed_local_slope + 1.0/this.remote_slope) * 0.5;
-
-        // Recalculate our best estimate of the shortest one-way trip
-        this.RecalculateMinTrip();
-
-        //consoleLog("consensus slope = " + m.toString());
-
-        // Note that each has an unknown trip time, but we assume
-        // that these trips are near the shortest trip each way, and further
-        // that these trip times are similar since the shortest trips
-        // on a balanced link should be almost always close since they are
-        // Poisson arrival processes.
-        // We also assume there is no clock drift over the short trip time,
-        // which is reasonable even for large drift.
-
-        // So to cancel out the Min(One-Way Delay) transit times:
-        // r2l_min_trip.local_ts - r2l_min_trip.remote_ts = Min(OWD) + ClockDelta(L - R)
-        // l2r_min_trip.remote_ts - l2r_min_trip.local_ts = Min(OWD) - ClockDelta(L - R)
-        // 2 * ClockDelta(L - R) = (r2l_min_trip.local_ts - r2l_min_trip.remote_ts) - (l2r_min_trip.remote_ts - l2r_min_trip.local_ts)
-
-        // The curve ball is that the remote timestamps are drifting relative to ours,
-        // and this equation assumes the clocks are ticking at the same rate.
-        // So first we must transform the remote timestamps to local ticks.
-
-        // And since the slope is a guess, we should choose the point on the right
-        // between the two points as the new origin, so that when we convert future
-        // timestamps, the effect of the slope is as small as possible.
-
-        //consoleLog("this.r2l_min_trip.local_ts = " + this.r2l_min_trip.local_ts.toString());
-        //consoleLog("this.r2l_min_trip.remote_ts = " + this.r2l_min_trip.remote_ts.toString());
-
-        //consoleLog("this.l2r_min_trip.local_ts = " + this.l2r_min_trip.local_ts.toString());
-        //consoleLog("this.l2r_min_trip.remote_ts = " + this.l2r_min_trip.remote_ts.toString());
-
-        // If r2l_min_trip is on the right of l2r_min_trip:
-        if (i64(this.r2l_min_trip.local_ts - this.l2r_min_trip.local_ts) > 0) {
-            //consoleLog("+++ r2l on the right");
-            // Use r2l_min_trip as the origin for remote timestamp drift correction.
-            this.remote_dy = this.r2l_min_trip.remote_ts;
-
-            //consoleLog("this.remote_dy = " + this.remote_dy.toString());
-
-            // Calculate distance from local/remote reference points (should be positive)
-            const dy = i32(this.r2l_min_trip.remote_ts - this.l2r_min_trip.remote_ts);
-            const dx = i32(this.r2l_min_trip.local_ts - this.l2r_min_trip.local_ts);
-
-            //consoleLog("dy = " + dy.toString());
-            //consoleLog("dx = " + dx.toString());
-
-            // Calculate delta from local time when remote probe was sent remotely
-            const owd = (dx - i32(dy / this.consensus_slope)) / 2;
-            this.local_dx = this.r2l_min_trip.local_ts - owd;
-
-            consoleLog("owd(l2r left) = " + owd.toString() + " slope = " + ((this.consensus_slope - 1) * 1000000).toString() + " ppm");
-
-            //consoleLog("this.local_dx = " + this.local_dx.toString());
-        } else {
-            //consoleLog("--- l2r on the right");
-            // Use l2r_min_trip as the origin for remote timestamp drift correction.
-            this.remote_dy = this.l2r_min_trip.remote_ts;
-
-            //consoleLog("this.remote_dy = " + this.remote_dy.toString());
-
-            // Calculate distance from local/remote reference points (should be positive)
-            const dy = i32(this.l2r_min_trip.remote_ts - this.r2l_min_trip.remote_ts);
-            const dx = i32(this.l2r_min_trip.local_ts - this.r2l_min_trip.local_ts);
-
-            //consoleLog("dy = " + dy.toString());
-            //consoleLog("dx = " + dx.toString());
-
-            // Calculate delta from local time when local probe was received remotely
-            const owd = (dx - i32(dy / this.consensus_slope)) / 2;
-            this.local_dx = this.l2r_min_trip.local_ts - owd;
-
-            consoleLog("owd(l2r right) = " + owd.toString() + " slope = " + ((this.consensus_slope - 1) * 1000000).toString() + " ppm");
-
-            //consoleLog("this.local_dx = " + this.local_dx.toString());
+        // Find which point is on left/right
+        let left: SampleTrip = this.incoming_min_trip;
+        let right: SampleTrip = this.outgoing_min_trip;
+        if (i64(right.local_ts - left.local_ts) < 0) {
+            left = this.outgoing_min_trip;
+            right = this.incoming_min_trip;
         }
 
-        consoleLog("candidate slopes: " + this.candidate_slopes.toString());
-        consoleLog("local_slope = " + this.local_slope.toString());
-        //consoleLog("smoothed_local_slope = " + this.smoothed_local_slope.toString());
-        consoleLog("remote_slope = " + this.remote_slope.toString());
-        //consoleLog("consensus_slope = " + this.consensus_slope.toString());
+        // Correct out the trip time
+        const dy = i32(right.remote_ts - left.remote_ts);
+        const dx = i32(right.local_ts - left.local_ts);
+        const owd_offset = (dx - i32(dy / this.consensus_slope)) / 2;
 
-        this.is_dirty = false;
+        // Use right point as reference point,
+        // because offsets to this point will be less affected by drift.
+        // Local = (Remote - remote_dy) / slope + local_dx
+        // Remote = (Local - local_dx) * slope + remote_dy
+        this.local_dx = right.local_ts - owd_offset;
+        this.remote_dy = right.remote_ts;
     }
 
-    // To convert from remote to local:
-    // Local = local_dx + (Remote - remote_dy) / consensus_slope
-    TransformRemoteToLocal(remote_ts: u64): u64 {
-        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) / this.consensus_slope);
-    }
-
-    // To convert from local to remote:
-    // Remote = remote_dy + (Local - local_dx) * consensus_slope
-    // Note that only the low 23-bits are valid in the view of the remote computer because
-    // we only have a view of 24 bits of the remote timestamps, and we lose one bit from the
-    // division by 2 above.
-    TransformLocalToRemote(local_ts: u64): u64 {
-        return this.remote_dy + i64(f64(i64(local_ts - this.local_dx)) * this.consensus_slope);
-    }
-
-    DiscardOld(now_ts: u64): void {
-        //consoleLog("DiscardOld()");
-
-        // While at least 3 samples remain, so we can calculate a slope:
-        while (this.samples.length >= 3) {
-            // If the first one is still fresh:
-            const age: u64 = u64(now_ts - this.samples[0].local_ts);
-            //consoleLog("next oldest age = " + age.toString());
-            if (age < kSyncWindowLength) {
-                // Note that if samples arrive out of order this does not work,
-                // but we assume that is rare enough to not skew the calculations.
-                //consoleLog("age = " + age.toString() + " < len = " + kSyncWindowLength.toString());
-                break; // Stop here
-            }
-
-            //consoleLog("discarding ts = " + this.samples[0].local_ts.toString(16));
-            //consoleLog("new sample count = " + this.samples.length.toString());
-
-            // Shift off the first one
-            this.samples.shift();
-
-            this.is_dirty = true;
-        }
-    }
-
-    RecalculateMinTrip(): void {
-        //consoleLog("RecalculateMinTrip()");
-
-        const sample_count: i32 = this.samples.length;
-
-        //consoleLog("sample_count = " + sample_count.toString());
-
-        // If there is only one sample use that one:
-        if (sample_count <= 1) {
-            if (sample_count >= 1) {
-                this.r2l_min_trip = this.samples[0];
-                //consoleLog("this.r2l_min_trip.local_ts = " + this.r2l_min_trip.local_ts.toString());
-                //consoleLog("this.r2l_min_trip.remote_ts = " + this.r2l_min_trip.remote_ts.toString());
-            }
-            return;
-        }
-
-        // Line equation: y = mx + b,
-        // where x is the local time, and y is the remote time.
-        const m: f64 = this.consensus_slope;
-
-        // Maximize b = y - mx, so we find the left-most point,
-        // which has the lowest latency if the slope estimate is good
-        // and the data is reasonable.
-
-        let best_sample = this.samples[0];
-        let best_b: f64;
-        {
-            const y0: u64 = best_sample.remote_ts;
-            const x0: u64 = best_sample.local_ts;
-            best_b = f64(y0) - m * f64(x0);
-
-            //consoleLog("b0 = " + best_b.toString());
-        }
-
-        // Calculate "b" for all sample points:
-        for (let i: i32 = 1; i < sample_count; ++i) {
-            const sample = this.samples[i];
-            const y: u64 = sample.remote_ts;
-            const x: u64 = sample.local_ts;
-            const b: f64 = f64(y) - m * f64(x);
-
-            //consoleLog("b[" + i.toString() + "] = " + b.toString());
-
-            if (b > best_b) {
-                best_sample = sample;
-                best_b = b;
-                //consoleLog("New best!");
-            }
-        }
-
-        this.r2l_min_trip = best_sample;
-        //consoleLog("this.r2l_min_trip.local_ts = " + this.r2l_min_trip.local_ts.toString());
-        //consoleLog("this.r2l_min_trip.remote_ts = " + this.r2l_min_trip.remote_ts.toString());
-    }
-
-    RecalculateSlope(): void {
-        //consoleLog("RecalculateSlope()");
-
-        let slopes: Array<f64> = new Array<f64>(0);
-
-        const sample_count: i32 = this.samples.length;
-
-        // Regularly sample 3 offsets from each sample to discover candidate slopes
-        let skip_j: i32 = sample_count / 2;
-        if (skip_j < 1) {
-            skip_j = 1;
-        }
-        let skip_k: i32 = sample_count * 3 / 8;
-        if (skip_k <= skip_j) {
-            // Make sure we do not sample the same points twice
-            skip_k = skip_j + 1;
-        }
-        let skip_l: i32 = sample_count / 2;
-        if (skip_l <= skip_k) {
-            // Make sure we do not sample the same points twice
-            skip_l = skip_k + 1;
-        }
-
-        //consoleLog("sample_count = " + sample_count.toString());
-        //consoleLog("skip_j = " + skip_j.toString());
-        //consoleLog("skip_k = " + skip_k.toString());
-        //consoleLog("skip_l = " + skip_l.toString());
-
-        for (let i: i32 = 0; i < sample_count; ++i) {
-            const sample = this.samples[i];
-
-            // Skip ahead to find a probe to compare:
-            const j = i + skip_j;
-            if (j >= sample_count) {
-                continue;
-            }
-
-            const sample_j = this.samples[j];
-            const local_dt_j = i32(sample_j.local_ts - sample.local_ts);
-            if (local_dt_j != 0) {
-                const m_j = i32(sample_j.remote_ts - sample.remote_ts) / f64(i32(local_dt_j));
-                if (isFinite(m_j) && m_j <= kMaxSlope && m_j >= kMinSlope) {
-                    slopes.push(m_j);
-                }
-            }
-
-            //consoleLog("*** i = " + i.toString());
-            //consoleLog("j = " + j.toString());
-            //consoleLog("local_dt_j = " + local_dt_j.toString());
-            //consoleLog("m_j = " + m_j.toString());
-
-            // Skip further:
-            const k = i + skip_k;
-            if (k >= sample_count) {
-                continue;
-            }
-
-            const sample_k = this.samples[k];
-            const local_dt_k = i32(sample_k.local_ts - sample.local_ts);
-            if (local_dt_k != 0) {
-                const m_k = i32(sample_k.remote_ts - sample.remote_ts) / f64(i32(local_dt_k));
-                if (isFinite(m_k) && m_k <= kMaxSlope && m_k >= kMinSlope) {
-                    slopes.push(m_k);
-                }
-            }
-
-            //consoleLog("*** i = " + i.toString());
-            //consoleLog("k = " + k.toString());
-            //consoleLog("local_dt_k = " + local_dt_k.toString());
-            //consoleLog("m_k = " + m_k.toString());
-
-            // Skip further:
-            const l = i + skip_l;
-            if (l >= sample_count) {
-                continue;
-            }
-
-            const sample_l = this.samples[l];
-            const local_dt_l = i32(sample_l.local_ts - sample.local_ts);
-            if (local_dt_l != 0) {
-                const m_l = i32(sample_l.remote_ts - sample.remote_ts) / f64(i32(local_dt_l));
-                if (isFinite(m_l) && m_l <= kMaxSlope && m_l >= kMinSlope) {
-                    slopes.push(m_l);
-                }
-            }
-
-            //consoleLog("*** i = " + i.toString());
-            //consoleLog("l = " + l.toString());
-            //consoleLog("local_dt_l = " + local_dt_l.toString());
-            //consoleLog("m_l = " + m_l.toString());
-        }
-
-        const slope_count: i32 = slopes.length;
-        if (slope_count < 3) {
-            // Not enough points to pick a good slope yet.
-            // Just guess 1.0 until we get enough data to start guessing slope
-            return;
-        }
-
-        slopes.sort();
-
-        //consoleLog("slopes = " + slopes.toString());
-
-        const best_slope_i = slope_count / 2;
-        const best_slope = slopes[best_slope_i];
-
-        // Refine by averaging the best slope with its closest neighbor
-        let neighbor_left: f64 = slopes[best_slope_i - 1];
-        let closest_neighbor = slopes[best_slope_i + 1];
-        if (abs(neighbor_left - best_slope) < abs(closest_neighbor - best_slope)) {
-            closest_neighbor = neighbor_left;
-        }
-
-        //consoleLog("best_slope = " + best_slope.toString());
-        //consoleLog("neighbor_left = " + neighbor_left.toString());
-        //consoleLog("neighbor_right = " + neighbor_right.toString());
-        //consoleLog("this.local_slope = " + this.local_slope.toString());
-
-        // If closest neighbor is close enough:
-        const kNeighborRadius: f64 = 50.0 / 1000_000.0; // 50 ppm
-        if (abs(closest_neighbor - best_slope) < kNeighborRadius) {
-            this.local_slope = (neighbor_left + best_slope) * 0.5;
-        } else {
-            this.local_slope = best_slope;
-        }
-
-        this.candidate_slopes = slopes;
-    }
-
-    OnTimeSample(local_ts: u64, trunc_remote_ts24: u32): void {
+    OnTimeSample(local_ts: u64, trunc_remote_ts24: u32): bool {
         //consoleLog("OnTimeSample()");
 
         // Expand incoming timestamps to 64-bit, though the high bits will be hallucinated.
         let remote_ts: u64 = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, trunc_remote_ts24);
+
         // Do not roll this backwards
         if (i64(remote_ts - this.last_remote_ts) > 0) {
             this.last_remote_ts = remote_ts;
         }
 
-        let sample: SampleTS24 = new SampleTS24(local_ts, remote_ts);
-        this.samples.push(sample);
+        // Handle first few data-points
+        if (!this.has_first_measurement || !this.has_remote_sync) {
+            this.has_first_measurement = true;
+        } else {
+            // Estimate the OWD for incoming_min_trip and new candidate point.
+            // Note: This takes drift slope into account
+            const old_send_ts = this.TransformRemoteToLocal(this.incoming_min_trip.remote_ts);
+            const old_owd = i64(this.incoming_min_trip.local_ts - old_send_ts);
+            const new_send_ts = this.TransformRemoteToLocal(remote_ts);
+            const new_owd = i64(local_ts - new_send_ts);
 
-        this.is_dirty = true;
+            // If the new trip time looks worse:
+            if (new_owd > old_owd) {
+                const age = i32(local_ts - this.incoming_min_trip.local_ts);
+    
+                let window = 4 * 3_000;
+                if (this.has_slope_estimate) {
+                    // Use a longer window if we can estimate slope
+                    window = 4 * 10_000;
+                }
+
+                // If the previous min-trip is not aging:
+                if (age < window) {
+                    return false;
+                }
+
+                const uncertainty = i32(age * this.slope_uncertainty + 0.5);
+
+                // If uncertainty is low:
+                if (new_owd > old_owd + uncertainty) {
+                    return false;
+                }
+            }
+        }
+
+        // Base transform on the new point
+        this.incoming_min_trip.Set(local_ts, remote_ts);
+        this.UpdateTransform();
+
+        return true;
     }
 
     // Peer provides, for the best probe we have sent so far:
     // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
     // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
-    OnPeerSync(local_ts: u64, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f64): void {
-        //consoleLog("OnPeerSync()");
-
-        // Expand to 64 bits
-        let min_trip_send_ts: u64 = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
-        let min_trip_recv_ts: u64 = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
-
-        // Store info
-        this.l2r_min_trip.local_ts = min_trip_send_ts;
-        this.l2r_min_trip.remote_ts = min_trip_recv_ts;
+    OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f32): void {
+        this.outgoing_min_trip.local_ts = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
+        this.outgoing_min_trip.remote_ts = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
 
         if (!isFinite(slope)) {
             slope = 1.0;
@@ -764,17 +487,72 @@ export class TimeSync {
         }
 
         this.remote_slope = slope;
-        this.is_dirty = true;
+        this.has_remote_sync = true;
 
-        //consoleLog("peer: min_trip_send_ts = " + min_trip_send_ts.toString());
-        //consoleLog("peer: min_trip_recv_ts = " + min_trip_recv_ts.toString());
-        //consoleLog("peer: slope = " + slope.toString());
+        // Add sample after updating remote information
+        if (!this.OnTimeSample(local_ts, trunc_remote_ts24)) {
+            // Update transform even if the new sample isn't as good
+            this.UpdateTransform();
+        }
 
-        // Get rid of samples that are old
-        this.DiscardOld(local_ts);
+        this.UpdateDrift();
+    }
 
-        // Update time sync from latest info
-        this.UpdateTimeSync();
+    UpdateDrift(): void {
+        // If we have seen this sample:
+        if (this.samples.length > 0 && this.samples[this.samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
+            return;
+        }
+
+        let sample: SampleTrip = new SampleTrip(this.incoming_min_trip.local_ts, this.incoming_min_trip.remote_ts);
+        this.samples.push(sample);
+
+        // Note: We assume one probe per second
+
+        if (this.samples.length < 100) {
+            return;
+        }
+
+        if (this.samples.length > 200) {
+            this.samples.shift();
+        }
+
+        let slopes: Array<f32> = new Array<f32>(0);
+
+        const sample_count = this.samples.length;
+        const split_i = sample_count / 2;
+        for (let i: i32 = 0; i < split_i; ++i) {
+            const sample_i = this.samples[i];
+
+            for (let j: i32 = i + 50; j < sample_count; ++j) {
+                const sample_j = this.samples[j];
+
+                const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f32(i32(sample_j.local_ts - sample_i.local_ts));
+                if (m >= kMinSlope && m <= kMaxSlope) {
+                    slopes.push(m);
+                }
+            }
+        }
+
+        if (slopes.length < 50) {
+            return;
+        }
+
+        slopes.sort();
+        this.local_slope = slopes[slopes.length / 2];
+
+        this.slope_uncertainty = abs(this.local_slope - 1.0) * 2;
+        if (this.slope_uncertainty > kMaxSlope) {
+            this.slope_uncertainty = kMaxSlope;
+        }
+
+        if (this.remote_slope == 1.0) {
+            this.consensus_slope = this.local_slope;
+        } else {
+            this.consensus_slope = (this.local_slope + this.remote_slope) * 0.5;
+        }
+
+        this.has_slope_estimate = true;
     }
 
     // Takes in a 23-bit timestamp in peer's clock domain,
@@ -808,20 +586,31 @@ export class TimeSync {
     }
 
     MakeTimeSync(send_ts: u64): Uint8Array {
-        let buffer: Uint8Array = new Uint8Array(18);
+        let buffer: Uint8Array = new Uint8Array(14);
         let ptr: usize = buffer.dataStart;
 
         store<u8>(ptr, Netcode.UnreliableType.TimeSync, 0);
         // Send timestamp
         Netcode.Store24(ptr, 1, u32(send_ts & 0xff_ff_ff));
         // min_trip_send_ts24_trunc:
-        Netcode.Store24(ptr, 4, u32(this.r2l_min_trip.remote_ts) & 0xff_ff_ff);
+        Netcode.Store24(ptr, 4, u32(this.incoming_min_trip.remote_ts) & 0xff_ff_ff);
         // min_trip_recv_ts24_trunc:
-        Netcode.Store24(ptr, 7, u32(this.r2l_min_trip.local_ts) & 0xff_ff_ff);
+        Netcode.Store24(ptr, 7, u32(this.incoming_min_trip.local_ts) & 0xff_ff_ff);
         // Our slope estimate
-        store<f64>(ptr, this.local_slope, 10);
+        store<f32>(ptr, this.local_slope, 10);
 
         return buffer;
+    }
+
+    TransformRemoteToLocal(remote_ts: u64): u64 {
+        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) / this.consensus_slope);
+    }
+
+    // Note that only the low 23-bits are valid in the view of the remote computer because
+    // we only have a view of 24 bits of the remote timestamps, and we lose one bit from the
+    // division by 2 above.
+    TransformLocalToRemote(local_ts: u64): u64 {
+        return this.remote_dy + i64(f64(i64(local_ts - this.local_dx)) * this.consensus_slope);
     }
 }
 
