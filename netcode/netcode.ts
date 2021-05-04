@@ -361,7 +361,7 @@ export class TimeSync {
     has_transform: bool = false;
 
     // incoming_min_trip recorded at regular intervals
-    samples: Array<SampleTrip> = new Array<SampleTrip>(0);
+    drift_samples: Array<SampleTrip> = new Array<SampleTrip>(0);
 
     // Calculated from samples
     local_slope: f32 = 1.0;
@@ -376,12 +376,11 @@ export class TimeSync {
     }
 
     DumpState(): void {
-        // FIXME
         consoleLog("local_slope = " + this.local_slope.toString());
         consoleLog("remote_slope = " + this.remote_slope.toString());
         consoleLog("consensus_slope = " + this.consensus_slope.toString());
         consoleLog("slope_uncertainty = " + this.slope_uncertainty.toString());
-        consoleLog("samples: " + this.samples.toString());
+        consoleLog("drift_samples: " + this.drift_samples.toString());
         consoleLog("incoming_min_trip = " + this.incoming_min_trip.toString());
         consoleLog("outgoing_min_trip = " + this.outgoing_min_trip.toString());
         consoleLog("remote_dy = " + this.remote_dy.toString());
@@ -503,43 +502,45 @@ export class TimeSync {
     }
 
     UpdateDrift(): void {
+        const samples = this.drift_samples;
+
         // If we have seen this sample:
-        if (this.samples.length > 0 && this.samples[this.samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
+        if (samples.length > 0 && samples[samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
             consoleLog("Ignoring drift sample repeat");
             return;
         }
 
         let sample: SampleTrip = new SampleTrip(this.incoming_min_trip.local_ts, this.incoming_min_trip.remote_ts);
-        this.samples.push(sample);
+        samples.push(sample);
 
-        if (this.samples.length >= 2)
+        if (samples.length >= 2)
         {
-            const sample_i = this.samples[0];
-            const sample_j = this.samples[this.samples.length - 1];
+            const sample_i = samples[0];
+            const sample_j = samples[samples.length - 1];
             const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
             consoleLog("wide slope = " + m.toString());
         }
 
-        if (this.samples.length < 50) {
-            consoleLog("Waiting for 50 samples: " + this.samples.length.toString());
+        if (samples.length < 50) {
+            consoleLog("Waiting for 50 samples: " + samples.length.toString());
             return;
         }
 
-        if (this.samples.length > 100) {
-            this.samples.shift();
+        if (samples.length > 100) {
+            samples.shift();
         }
 
         const t0 = getMilliseconds();
 
         let slopes: Array<f32> = new Array<f32>(0);
 
-        const sample_count = this.samples.length;
+        const sample_count = samples.length;
         const split_i = sample_count / 2;
         for (let i: i32 = 0; i < split_i; ++i) {
-            const sample_i = this.samples[i];
+            const sample_i = samples[i];
 
             for (let j: i32 = i + sample_count / 2; j < sample_count; ++j) {
-                const sample_j = this.samples[j];
+                const sample_j = samples[j];
 
                 const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
                 if (m >= kMinSlope && m <= kMaxSlope) {
