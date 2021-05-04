@@ -477,7 +477,7 @@ export class TimeSync {
     // Peer provides, for the best probe we have sent so far:
     // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
     // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
-    OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f32): void {
+    OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f64): void {
         this.outgoing_min_trip.local_ts = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
         this.outgoing_min_trip.remote_ts = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
 
@@ -489,7 +489,7 @@ export class TimeSync {
             slope = kMinSlope;
         }
 
-        this.remote_slope = f64(slope);
+        this.remote_slope = slope;
         this.has_remote_sync = true;
 
         // Add sample after updating remote information
@@ -624,14 +624,14 @@ export class TimeSync {
     }
 
     TransformRemoteToLocal(remote_ts: u64): u64 {
-        return this.local_dx + i64(i64(remote_ts - this.remote_dy) * this.inv_consensus_slope + 0.5);
+        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) * this.inv_consensus_slope);
     }
 
     // Note that only the low 23-bits are valid in the view of the remote computer because
     // we only have a view of 24 bits of the remote timestamps, and we lose one bit from the
     // division by 2 above.
     TransformLocalToRemote(local_ts: u64): u64 {
-        return this.remote_dy + i64(i64(local_ts - this.local_dx) * this.consensus_slope + 0.5);
+        return this.remote_dy + i64(f64(i64(local_ts - this.local_dx)) * this.consensus_slope);
     }
 }
 
