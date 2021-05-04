@@ -101,7 +101,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     client.name = "Player " + client.player_id.toString();
     client.score = 100;
 
-    SendTimeSync(client, now_msec);
+    SendTimeSync(client);
 
     sendReliable(client.id, Netcode.MakeSetId(client.player_id));
 
@@ -255,8 +255,6 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 // Message Serializers
 
 export function SendTimeSync(client: ConnectedClient): void {
-    client.TimeSync.Update();
-
     const send_msec = getMilliseconds();
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(client.TimeConverter.MsecToTime(send_msec)));
 }

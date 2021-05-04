@@ -364,8 +364,6 @@ export function SendChatRequest(m: string): i32 {
 }
 
 export function SendTimeSync(): void {
-    TimeSync.Update();
-
     const send_msec = getMilliseconds();
     sendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
 }

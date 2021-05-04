@@ -338,8 +338,8 @@ class SampleTrip {
 }
 
 // Bound the slope estimates to a reasonable range
-const kMaxSlope = 1.003; // +3000 ppm
-const kMinSlope = 0.997; // -3000 ppm
+const kMaxSlope: f32 = 1.003; // +3000 ppm
+const kMinSlope: f32 = 0.997; // -3000 ppm
 
 export class TimeSync {
     // Used to hallucinate the upper bits of peer timestamps
@@ -368,6 +368,7 @@ export class TimeSync {
 
     // Average of local slope and inverse remote slope
     consensus_slope: f32 = 1.0;
+    inv_consensus_slope: f32 = 1.0;
     slope_uncertainty: f32 = 0.002;
     has_slope_estimate: bool = false;
 
@@ -408,7 +409,7 @@ export class TimeSync {
         // Correct out the trip time
         const dy = i32(right.remote_ts - left.remote_ts);
         const dx = i32(right.local_ts - left.local_ts);
-        const owd_offset = (dx - i32(dy / this.consensus_slope)) / 2;
+        const owd_offset = (dx - i32(f32(dy) * this.inv_consensus_slope)) / 2;
 
         // Use right point as reference point,
         // because offsets to this point will be less affected by drift.
@@ -455,7 +456,7 @@ export class TimeSync {
                     return false;
                 }
 
-                const uncertainty = i32(age * this.slope_uncertainty + 0.5);
+                const uncertainty = i32(f32(age) * this.slope_uncertainty + 0.5);
 
                 // If uncertainty is low:
                 if (new_owd > old_owd + uncertainty) {
@@ -527,7 +528,7 @@ export class TimeSync {
             for (let j: i32 = i + 50; j < sample_count; ++j) {
                 const sample_j = this.samples[j];
 
-                const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f32(i32(sample_j.local_ts - sample_i.local_ts));
+                const m = f32(i32(sample_j.remote_ts - sample_i.remote_ts)) / f32(i32(sample_j.local_ts - sample_i.local_ts));
                 if (m >= kMinSlope && m <= kMaxSlope) {
                     slopes.push(m);
                 }
@@ -551,6 +552,7 @@ export class TimeSync {
         } else {
             this.consensus_slope = (this.local_slope + this.remote_slope) * 0.5;
         }
+        this.inv_consensus_slope = 1.0 / this.consensus_slope;
 
         this.has_slope_estimate = true;
     }
@@ -603,7 +605,7 @@ export class TimeSync {
     }
 
     TransformRemoteToLocal(remote_ts: u64): u64 {
-        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) / this.consensus_slope);
+        return this.local_dx + i64(f64(i64(remote_ts - this.remote_dy)) * this.inv_consensus_slope);
     }
 
     // Note that only the low 23-bits are valid in the view of the remote computer because
