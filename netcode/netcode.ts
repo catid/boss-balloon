@@ -511,7 +511,13 @@ export class TimeSync {
         let sample: SampleTrip = new SampleTrip(this.incoming_min_trip.local_ts, this.incoming_min_trip.remote_ts);
         this.samples.push(sample);
 
-        // Note: We assume one probe per second
+        if (this.samples.length >= 2)
+        {
+            const sample_i = this.samples[0];
+            const sample_j = this.samples[this.samples.length - 1];
+            const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
+            consoleLog("wide slope = " + m.toString());
+        }
 
         if (this.samples.length < 50) {
             consoleLog("Waiting for 50 samples: " + this.samples.length.toString());
