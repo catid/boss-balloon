@@ -338,8 +338,8 @@ class SampleTrip {
 }
 
 // Bound the slope estimates to a reasonable range
-const kMaxSlope: f64 = 1.003; // +3000 ppm
-const kMinSlope: f64 = 0.997; // -3000 ppm
+const kMaxSlope: f32 = 1.003; // +3000 ppm
+const kMinSlope: f32 = 0.997; // -3000 ppm
 
 export class TimeSync {
     // Used to hallucinate the upper bits of peer timestamps
@@ -352,7 +352,7 @@ export class TimeSync {
     // Provided by peer
     // outgoing_min_trip: Local send time, and remote receive time (with lowest latency)
     outgoing_min_trip: SampleTrip = new SampleTrip(0, 0);
-    remote_slope: f64 = 1.0;
+    remote_slope: f32 = 1.0;
     has_remote_sync: bool = false;
 
     // X/Y intercept for remote timestamp drift correction to local tick rate
@@ -364,12 +364,12 @@ export class TimeSync {
     samples: Array<SampleTrip> = new Array<SampleTrip>(0);
 
     // Calculated from samples
-    local_slope: f64 = 1.0;
+    local_slope: f32 = 1.0;
 
     // Average of local slope and inverse remote slope
-    consensus_slope: f64 = 1.0;
-    inv_consensus_slope: f64 = 1.0;
-    slope_uncertainty: f64 = 0.002;
+    consensus_slope: f32 = 1.0;
+    inv_consensus_slope: f32 = 1.0;
+    slope_uncertainty: f32 = 0.002;
     has_slope_estimate: bool = false;
 
     constructor() {
@@ -409,7 +409,7 @@ export class TimeSync {
         // Correct out the trip time
         const dy = i32(right.remote_ts - left.remote_ts);
         const dx = i32(right.local_ts - left.local_ts);
-        const owd_offset = (dx - i32(dy * this.inv_consensus_slope + 0.5)) / 2;
+        const owd_offset = (dx - i32(f32(dy) * this.inv_consensus_slope)) / 2;
 
         // Use right point as reference point,
         // because offsets to this point will be less affected by drift.
@@ -444,7 +444,8 @@ export class TimeSync {
             consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
 
             // If the new trip time looks worse:
-            if (new_owd > old_owd) {
+            // Note: old_owd > 0 check added because sometimes the timestamps are crazy
+            if (old_owd > 0 && new_owd > old_owd) {
                 const age = i32(local_ts - this.incoming_min_trip.local_ts);
     
                 let window = 4 * 3_000;
@@ -458,7 +459,7 @@ export class TimeSync {
                     return false;
                 }
 
-                const uncertainty = i32(f64(age) * this.slope_uncertainty + 0.5);
+                const uncertainty = i32(f32(age) * this.slope_uncertainty + 0.5);
 
                 // If uncertainty is low:
                 if (new_owd > old_owd + uncertainty) {
@@ -477,7 +478,7 @@ export class TimeSync {
     // Peer provides, for the best probe we have sent so far:
     // min_trip_send_ts24_trunc: Our 24-bit timestamp from the probe, from our clock.
     // min_trip_recv_ts24_trunc: When they received the probe, from their clock.
-    OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f64): void {
+    OnPeerSync(local_ts: u64, trunc_remote_ts24: u32, min_trip_send_ts24_trunc: u32, min_trip_recv_ts24_trunc: u32, slope: f32): void {
         this.outgoing_min_trip.local_ts = TS24ExpandFromTruncatedWithBias(local_ts, min_trip_send_ts24_trunc);
         this.outgoing_min_trip.remote_ts = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, min_trip_recv_ts24_trunc);
 
@@ -530,7 +531,7 @@ export class TimeSync {
 
         const t0 = getMilliseconds();
 
-        let slopes: Array<f64> = new Array<f64>(0);
+        let slopes: Array<f32> = new Array<f32>(0);
 
         const sample_count = this.samples.length;
         const split_i = sample_count / 2;
@@ -542,7 +543,7 @@ export class TimeSync {
 
                 const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
                 if (m >= kMinSlope && m <= kMaxSlope) {
-                    slopes.push(m);
+                    slopes.push(f32(m));
                 }
             }
         }
@@ -618,7 +619,7 @@ export class TimeSync {
         // min_trip_recv_ts24_trunc:
         Netcode.Store24(ptr, 7, u32(this.incoming_min_trip.local_ts) & 0xff_ff_ff);
         // Our slope estimate
-        store<f32>(ptr, f32(this.local_slope), 10);
+        store<f32>(ptr, this.local_slope, 10);
 
         return buffer;
     }
