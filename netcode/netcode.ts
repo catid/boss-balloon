@@ -455,7 +455,6 @@ export class TimeSync {
 
                 // If the previous min-trip is not aging:
                 if (age < window) {
-                    consoleLog("New trip time is worse, and old one hasn't aged out.");
                     return false;
                 }
 
@@ -463,13 +462,10 @@ export class TimeSync {
 
                 // If uncertainty is low:
                 if (new_owd > old_owd + uncertainty) {
-                    consoleLog("New trip time is worse, and uncertainty is low.");
                     return false;
                 }
             }
         }
-
-        consoleLog("New one is better.");
 
         // Base transform on the new point
         this.incoming_min_trip.Set(local_ts, remote_ts);
@@ -508,6 +504,7 @@ export class TimeSync {
     UpdateDrift(): void {
         // If we have seen this sample:
         if (this.samples.length > 0 && this.samples[this.samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
+            consoleLog("Ignoring drift sample repeat");
             return;
         }
 
@@ -517,6 +514,7 @@ export class TimeSync {
         // Note: We assume one probe per second
 
         if (this.samples.length < 100) {
+            consoleLog("Waiting for 100 samples: " + this.samples.length.toString());
             return;
         }
 
