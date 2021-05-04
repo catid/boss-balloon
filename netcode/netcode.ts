@@ -534,7 +534,7 @@ export class TimeSync {
             for (let j: i32 = i + sample_count / 2; j < sample_count; ++j) {
                 const sample_j = this.samples[j];
 
-                const m = f64(i32(sample_j.remote_ts - sample_i.remote_ts)) / f64(i32(sample_j.local_ts - sample_i.local_ts));
+                const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
                 if (m >= kMinSlope && m <= kMaxSlope) {
                     slopes.push(f32(m));
                 }
