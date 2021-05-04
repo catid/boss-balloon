@@ -553,6 +553,9 @@ export class TimeSync {
         if (this.slope_uncertainty > kMaxSlope) {
             this.slope_uncertainty = kMaxSlope;
         }
+        if (this.slope_uncertainty < 0.00005) {
+            this.slope_uncertainty = 0.00005; // within 50 ppm
+        }
 
         if (this.remote_slope == 1.0) {
             this.consensus_slope = this.local_slope;
