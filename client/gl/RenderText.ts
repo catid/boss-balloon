@@ -17,7 +17,9 @@ const kVertexShaderCode: string = `
 
     void main() {
         uv_coord = a_texcoord;
-        gl_Position = vec4(a_position * u_scale + u_xy, 0.0, 1.0);
+        vec2 p = a_position * u_scale + u_xy;
+        // Normalized upper left (0,0) lower right (1,1)
+        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
     }
 `;
 
@@ -243,6 +245,10 @@ export class RenderTextProgram {
     constructor(texture_image_location: string) {
         const gl = RenderContext.I.gl;
 
+        gl.getExtension('OES_standard_derivatives');
+        gl.getExtension('OES_texture_float_linear');
+        //gl.getExtension('OES_texture_border_clamp');
+
         this.InitFont();
 
         this.image = gl.createImage(texture_image_location);
@@ -256,7 +262,6 @@ export class RenderTextProgram {
         }*/
 
         const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
-        gl.getExtension('OES_standard_derivatives');
         gl.shaderSource(fragment_shader, kFragmentShaderCode);
         gl.compileShader(fragment_shader);
         /*if (!gl.getShaderParameter(fragment_shader, gl.COMPILE_STATUS)) {
@@ -296,8 +301,9 @@ export class RenderTextProgram {
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // Does not seem to be supported?
+        //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         if (!this.texture_ready) {
             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
@@ -425,6 +431,10 @@ export class RenderTextProgram {
         x: f32, y: f32,
         scale: f32,
         data: RenderTextData): void {
+        if (!this.texture_ready) {
+            return;
+        }
+
         const gl = RenderContext.I.gl;
 
         // Natural offset is upper left.

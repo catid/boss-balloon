@@ -139,7 +139,7 @@ export function initASWebGLue(importObject) {
   // END DEBUG STUFF --------
 
   importObject.WebGL.imageReady = (image_id) => {
-    console.log("image ready check! image_id=" + image_id);
+    //console.log("image ready check! image_id=" + image_id);
     if (WebGL.imageArray.length <= image_id) {
       return false;
     }
