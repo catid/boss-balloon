@@ -27,7 +27,8 @@
   },
   "homepage": "https://github.com/catid/boss-balloon#readme",
   "dependencies": {
-    "@assemblyscript/loader": "^0.18.27"
+    "@assemblyscript/loader": "^0.18.27",
+    "assemblyscript-json": "^1.0.0"
   },
   "devDependencies": {
     "as-3d-math": "0.0.1",

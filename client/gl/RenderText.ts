@@ -1,112 +1,276 @@
 import { RenderContext } from "./RenderContext";
+import { ImageData, WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint, WebGLTexture } from "./WebGL";
+import { JSON } from "assemblyscript-json";
 
-const VERTEX_SHADER: string = `#version 300 es
-  precision highp float;
+const kVertexShaderCode: string = `#version 300 es
+    precision highp float;
 
-  uniform uint u_back_color;
-  uniform uint u_fore_color;
+    // Input from application:
+    attribute vec2 a_position;
+    attribute vec2 a_texcoord;
 
-  in vec2 position;
-  out vec4 c;
+    // Output to fragment shader:
+    varying vec2 xy_coord;
+    varying vec2 uv_coord;
 
-  void main() {
-    vec2 pos = (position * u_scale);
-
-    float cosine = cos(u_rotation);
-    float sine = sin(u_rotation);
-    float x = (cosine * pos.x) + (sine * pos.y);
-    float y = (cosine * pos.y) - (sine * pos.x);
-    pos.x = x + u_loop_x;
-    pos.y = y + u_loop_y;
-
-
-    gl_Position = vec4( pos, 0.0, 1.0 );
-    uint mask = uint(0xff); // byte mask
-
-    // convert 32-bit hexadecimal color to four float color
-    uint red = u_color >> 24;
-    uint green = (u_color >> 16) & mask;
-    uint blue = (u_color >> 8) & mask;
-    uint alpha = u_color & mask;
-
-    c = vec4( float(red) / 255.0, 
-              float(green) / 255.0,
-              float(blue) / 255.0,
-              float(alpha) / 255.0 );
-  }
+    void main() {
+        coord = a_texcoord;
+        gl_Position = vec4(a_position, 0.0, 1.0);
+    }
 `;
 
-const FRAGMENT_SHADER: string = `#version 300 es
-  precision highp float;
+const kFragmentShaderCode: string = `#version 300 es
+    #extension GL_OES_standard_derivatives : enable
+    precision highp float;
 
-  uniform vec4 u_color;
-  out vec4 color;
+    // Input from application:
+    uniform vec3 u_foreground_color;
+    uniform vec3 u_stroke_color;
+    uniform vec3 u_background_color;
 
-  void main() {
-    color = c;
-  }
+    // Input from vertex shader:
+    uniform sampler2D u_sampler;
+    varying vec2 xy_coord;
+    varying vec2 uv_coord;
+
+    void main() {
+        float sample = texture2D(u_sampler, uv_coord).r;
+
+        float scale = 1.0 / fwidth(sample);
+        float dist = (sample - 0.5) * scale + 0.5;
+
+        // Stroked text
+        float stroke_alpha = clamp(dist, 0.0, 1.0);
+        float back_alpha = clamp(dist + scale * 0.125, 0.0, 1.0);
+
+        vec3 inner_color = mix(u_fore_color, u_stroke_color, stroke_alpha);
+        gl_FragColor = mix(inner_color, u_back_color, back_alpha);
+    }
 `;
 
+class Letter {
+    x: i32;
+    y: i32;
+    w: i32;
+    h: i32;
+    originX: i32;
+    originY: i32;
+    advance: i32;
 
-export class Renderer {
-     public static SN: Renderer; // SINGLETON
-     public static DELTA: f32;
+    constructor(x: i32, y: i32, w: i32, h: i32, originX: i32, originY: i32, advance: i32) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.originX = originX;
+        this.originY = originY;
+        this.advance = advance;
+    }
+}
 
-     public color_line_program: WebGLProgram;
-     public color_location: WebGLUniformLocation;
-     public scale_location: WebGLUniformLocation;
-     public rotation_location: WebGLUniformLocation;
-     public offset_x_location: WebGLUniformLocation;
-     public offset_y_location: WebGLUniformLocation;
-     public gl: WebGLRenderingContext;
+export class RenderTextProgram {
+    image: ImageData;
+    texture_ready: bool = false;
+    texture: WebGLTexture;
 
-     public buffer: WebGLBuffer;
-     public position_al: GLint;
+    texture_w: i32 = 0;
+    texture_h: i32 = 0;
+    letters = new Map<i32, Letter>();
 
-     constructor() {
-          if (Renderer.SN == null) {
-               Renderer.SN = this;
-          }
+    shader_program: WebGLProgram;
 
-          this.gl = createContextFromCanvas('cnvs', 'webgl2');
-          let color_line_vertex_shader: WebGLShader = createShader(this.gl, VERTEX_SHADER);
-          shaderSource(this.gl, color_line_vertex_shader, V_COLOR_LINE_SHADER);
-          compileShader(this.gl, color_line_vertex_shader);
+    // Vertex shader attributes:
+    a_position: GLint;
 
-          let fragment_shader: WebGLShader = createShader(this.gl, FRAGMENT_SHADER);
-          shaderSource(this.gl, fragment_shader, F_SHADER);
-          compileShader(this.gl, fragment_shader);
+    // Fragment shader uniforms:
+    u_foreground_color: WebGLUniformLocation;
+    u_stroke_color: WebGLUniformLocation;
+    u_background_color: WebGLUniformLocation;
+    u_sampler: WebGLUniformLocation;
 
-          this.color_line_program = createProgram(this.gl);
+    buffer: WebGLBuffer;
+    position_al: GLint;
 
-          attachShader(this.gl, this.color_line_program, color_line_vertex_shader);
-          attachShader(this.gl, this.color_line_program, fragment_shader);
+    constructor(texture_image_location: string) {
+        const gl = RenderContext.I.gl;
 
-          linkProgram(this.gl, this.color_line_program);
+        // Generated by `node scripts/convert_font_json.js`
+        this.texture_w = 1024
+        this.texture_h = 128
+        this.letters.set(48, new Letter(898, 0, 29, 37, 5, 30, 19));
+        this.letters.set(49, new Letter(617, 46, 28, 36, 4, 29, 19));
+        this.letters.set(50, new Letter(29, 46, 28, 37, 5, 30, 19));
+        this.letters.set(51, new Letter(927, 0, 29, 37, 5, 30, 19));
+        this.letters.set(52, new Letter(956, 0, 29, 37, 5, 30, 19));
+        this.letters.set(53, new Letter(57, 46, 28, 37, 5, 29, 19));
+        this.letters.set(54, new Letter(985, 0, 29, 37, 5, 30, 19));
+        this.letters.set(55, new Letter(85, 46, 28, 37, 4, 29, 19));
+        this.letters.set(56, new Letter(808, 0, 30, 37, 5, 30, 19));
+        this.letters.set(57, new Letter(545, 0, 29, 38, 5, 30, 19));
+        this.letters.set(32, new Letter(617, 83, 14, 14, 7, 7, 19));
+        this.letters.set(33, new Letter(169, 46, 19, 37, 0, 29, 19));
+        this.letters.set(34, new Letter(445, 83, 23, 22, 2, 31, 19));
+        this.letters.set(35, new Letter(412, 46, 30, 36, 5, 29, 19));
+        this.letters.set(36, new Letter(0, 0, 29, 46, 5, 34, 19));
+        this.letters.set(37, new Letter(482, 0, 33, 38, 7, 30, 19));
+        this.letters.set(38, new Letter(715, 0, 31, 37, 5, 30, 19));
+        this.letters.set(39, new Letter(468, 83, 18, 22, -1, 31, 19));
+        this.letters.set(40, new Letter(105, 0, 24, 46, 3, 34, 19));
+        this.letters.set(41, new Letter(129, 0, 24, 46, 2, 34, 19));
+        this.letters.set(42, new Letter(308, 83, 31, 30, 6, 26, 19));
+        this.letters.set(43, new Letter(339, 83, 30, 29, 5, 24, 19));
+        this.letters.set(44, new Letter(369, 83, 20, 25, 1, 12, 19));
+        this.letters.set(45, new Letter(590, 83, 27, 16, 4, 18, 19));
+        this.letters.set(46, new Letter(508, 83, 20, 20, 0, 12, 19));
+        this.letters.set(47, new Letter(153, 0, 30, 44, 5, 33, 19));
+        this.letters.set(58, new Letter(288, 83, 20, 31, 0, 24, 19));
+        this.letters.set(59, new Letter(838, 46, 20, 36, 1, 23, 19));
+        this.letters.set(60, new Letter(945, 46, 28, 32, 4, 26, 19));
+        this.letters.set(61, new Letter(418, 83, 27, 22, 4, 21, 19));
+        this.letters.set(62, new Letter(973, 46, 28, 32, 4, 26, 19));
+        this.letters.set(63, new Letter(113, 46, 28, 37, 4, 30, 19));
+        this.letters.set(64, new Letter(307, 0, 33, 40, 7, 30, 19));
+        this.letters.set(65, new Letter(221, 46, 32, 36, 6, 29, 19));
+        this.letters.set(66, new Letter(472, 46, 29, 36, 4, 29, 19));
+        this.letters.set(67, new Letter(746, 0, 31, 37, 5, 30, 19));
+        this.letters.set(68, new Letter(501, 46, 29, 36, 4, 29, 19));
+        this.letters.set(69, new Letter(757, 46, 27, 36, 3, 29, 19));
+        this.letters.set(70, new Letter(645, 46, 28, 36, 3, 29, 19));
+        this.letters.set(71, new Letter(838, 0, 30, 37, 6, 30, 19));
+        this.letters.set(72, new Letter(673, 46, 28, 36, 4, 29, 19));
+        this.letters.set(73, new Letter(784, 46, 27, 36, 4, 29, 19));
+        this.letters.set(74, new Letter(141, 46, 28, 37, 5, 29, 19));
+        this.letters.set(75, new Letter(442, 46, 30, 36, 4, 29, 19));
+        this.letters.set(76, new Letter(811, 46, 27, 36, 3, 29, 19));
+        this.letters.set(77, new Letter(253, 46, 32, 36, 6, 29, 19));
+        this.letters.set(78, new Letter(701, 46, 28, 36, 4, 29, 19));
+        this.letters.set(79, new Letter(777, 0, 31, 37, 6, 30, 19));
+        this.letters.set(80, new Letter(729, 46, 28, 36, 3, 29, 19));
+        this.letters.set(81, new Letter(258, 0, 32, 43, 6, 30, 19));
+        this.letters.set(82, new Letter(530, 46, 29, 36, 4, 29, 19));
+        this.letters.set(83, new Letter(868, 0, 30, 37, 6, 30, 19));
+        this.letters.set(84, new Letter(381, 46, 31, 36, 6, 29, 19));
+        this.letters.set(85, new Letter(0, 46, 29, 37, 5, 29, 19));
+        this.letters.set(86, new Letter(285, 46, 32, 36, 6, 29, 19));
+        this.letters.set(87, new Letter(188, 46, 33, 36, 7, 29, 19));
+        this.letters.set(88, new Letter(317, 46, 32, 36, 6, 29, 19));
+        this.letters.set(89, new Letter(349, 46, 32, 36, 6, 29, 19));
+        this.letters.set(90, new Letter(559, 46, 29, 36, 5, 29, 19));
+        this.letters.set(91, new Letter(213, 0, 23, 44, 1, 34, 19));
+        this.letters.set(92, new Letter(183, 0, 30, 44, 5, 33, 19));
+        this.letters.set(93, new Letter(236, 0, 22, 44, 2, 34, 19));
+        this.letters.set(94, new Letter(389, 83, 29, 24, 5, 34, 19));
+        this.letters.set(95, new Letter(559, 83, 31, 16, 6, 3, 19));
+        this.letters.set(96, new Letter(486, 83, 22, 20, 1, 33, 19));
+        this.letters.set(97, new Letter(858, 46, 29, 32, 5, 24, 19));
+        this.letters.set(98, new Letter(399, 0, 28, 39, 4, 31, 19));
+        this.letters.set(99, new Letter(0, 83, 28, 32, 4, 24, 19));
+        this.letters.set(100, new Letter(427, 0, 28, 39, 5, 31, 19));
+        this.letters.set(101, new Letter(887, 46, 29, 32, 5, 24, 19));
+        this.letters.set(102, new Letter(574, 0, 29, 38, 4, 31, 19));
+        this.letters.set(103, new Letter(340, 0, 30, 40, 5, 26, 19));
+        this.letters.set(104, new Letter(688, 0, 27, 38, 4, 31, 19));
+        this.letters.set(105, new Letter(455, 0, 27, 39, 3, 32, 19));
+        this.letters.set(106, new Letter(29, 0, 26, 46, 4, 32, 19));
+        this.letters.set(107, new Letter(603, 0, 29, 38, 4, 31, 19));
+        this.letters.set(108, new Letter(370, 0, 29, 39, 5, 31, 19));
+        this.letters.set(109, new Letter(89, 83, 30, 31, 5, 24, 19));
+        this.letters.set(110, new Letter(207, 83, 27, 31, 4, 24, 19));
+        this.letters.set(111, new Letter(916, 46, 29, 32, 5, 24, 19));
+        this.letters.set(112, new Letter(632, 0, 28, 38, 4, 24, 19));
+        this.letters.set(113, new Letter(660, 0, 28, 38, 5, 24, 19));
+        this.letters.set(114, new Letter(179, 83, 28, 31, 4, 24, 19));
+        this.letters.set(115, new Letter(28, 83, 28, 32, 5, 24, 19));
+        this.letters.set(116, new Letter(588, 46, 29, 36, 5, 28, 19));
+        this.letters.set(117, new Letter(234, 83, 27, 31, 4, 24, 19));
+        this.letters.set(118, new Letter(119, 83, 30, 31, 5, 24, 19));
+        this.letters.set(119, new Letter(56, 83, 33, 31, 7, 24, 19));
+        this.letters.set(120, new Letter(149, 83, 30, 31, 5, 24, 19));
+        this.letters.set(121, new Letter(515, 0, 30, 38, 5, 24, 19));
+        this.letters.set(122, new Letter(261, 83, 27, 31, 4, 24, 19));
+        this.letters.set(123, new Letter(55, 0, 25, 46, 3, 34, 19));
+        this.letters.set(124, new Letter(290, 0, 17, 43, -1, 33, 19));
+        this.letters.set(125, new Letter(80, 0, 25, 46, 2, 34, 19));
+        this.letters.set(126, new Letter(528, 83, 31, 19, 6, 20, 19));
 
-          useProgram(this.gl, this.color_line_program);
+        this.image = gl.createImage(texture_image_location);
+        this.texture = gl.createTexture();
 
-          this.color_location = getUniformLocation(this.gl, this.color_line_program, "u_color");
-          this.scale_location = getUniformLocation(this.gl, this.color_line_program, "u_scale");
-          this.rotation_location = getUniformLocation(this.gl, this.color_line_program, "u_rotation");
-          this.offset_x_location = getUniformLocation(this.gl, this.color_line_program, "u_loop_x");
-          this.offset_y_location = getUniformLocation(this.gl, this.color_line_program, "u_loop_y");
+        const vertex_shader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex_shader, kVertexShaderCode);
+        gl.compileShader(vertex_shader);
+        if (!gl.getShaderParameter(vertex_shader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vertex_shader));
+        }
 
-          this.buffer = createBuffer(this.gl);
-          bindBuffer(this.gl, ARRAY_BUFFER, this.buffer);
+        const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.getExtension('OES_standard_derivatives');
+        gl.shaderSource(fragment_shader, kFragmentShaderCode);
+        gl.compileShader(fragment_shader);
+        if (!gl.getShaderParameter(fragment_shader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fragment_shader));
+        }
 
-          this.position_al = getAttribLocation(this.gl, this.color_line_program, 'position');
-          enableVertexAttribArray(this.gl, this.position_al);
-     }
+        this.shader_program = gl.createProgram();
+        gl.attachShader(this.shader_program, vertex_shader);
+        gl.attachShader(this.shader_program, fragment_shader);
+        gl.linkProgram(this.shader_program);
+        gl.useProgram(this.shader_program);
 
-     public clear(): void {
-          clearColor(this.gl, 0.0, 0.0, 0.0, 1.0);
-          clear(this.gl, COLOR_BUFFER_BIT);
-     }
+        this.a_position = gl.getAttribLocation(this.shader_program, "a_position");
 
-     public renderLineLoop(line_data: StaticArray<f32>, v_offset: Vector,
-          rot: f32, scale: f32, color_data: u32 = 0xff_ff_ff_ff, line_loop: bool = true): void {
-          bufferData<f32>(this.gl, ARRAY_BUFFER, line_data, STATIC_DRAW);
+        this.u_foreground_color = gl.getUniformLocation(this.shader_program, "u_foreground_color");
+        this.u_stroke_color = gl.getUniformLocation(this.shader_program, "u_stroke_color");
+        this.u_background_color = gl.getUniformLocation(this.shader_program, "u_background_color");
+        this.u_sampler = gl.getUniformLocation(this.shader_program, "u_sampler");
+
+        this.buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+        gl.enableVertexAttribArray(this.a_position);
+    }
+
+    public RenderLetter(x: f32, y: f32, letter: i32): void {
+        const gl = RenderContext.I.gl;
+
+        if (!gl.imageReady(this.image)) {
+            return;
+        }
+
+        gl.useProgram(this.shader_program);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        if (!this.texture_ready) {
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, +true);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.image);
+
+            gl.uniform1i(this.u_sampler, 0);
+
+            this.texture_ready = true;
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    }
+
+    public Render(): void {
+        const gl = RenderContext.I.gl;
+
+        let quad_data: StaticArray<f32> = [
+            // x     y     u     v
+            -0.5, -0.5,  0.0,  0.0,
+            -0.5,  0.5,  0.0,  0.99,
+            0.5,  -0.5,  0.95, 0.0,
+            0.5,   0.5,  0.95, 0.99,];
+        gl.bufferData<f32>(gl.ARRAY_BUFFER, quad_data, gl.STATIC_DRAW);
+
+        // attribute | dimensions | data type | normalize | stride bytes | offset bytes
+        gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
+
+        bufferData<f32>(this.gl, ARRAY_BUFFER, line_data, STATIC_DRAW);
 
           uniform1ui(this.gl, this.color_location, color_data);
           uniform1f(this.gl, this.scale_location, scale);
@@ -133,6 +297,12 @@ export class Renderer {
 
 }
 
+export class RenderText {
+
+
+    constructor() {
+    }
+}
 
 export class RenderYou {
     constructor() {
