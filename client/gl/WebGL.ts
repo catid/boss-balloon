@@ -519,7 +519,7 @@ export declare function getSupportedExtensions(gl: WebGLRenderingContextId): seq
 
 type object_ = externref;
 
-export declare function getExtension(gl: WebGLRenderingContextId, name: string): object_;
+export declare function getExtension(gl: WebGLRenderingContextId, name: string): void;
 
 // THIS WILL BE IN INDEX INTO A PROGRAM LIST KEPT IN THE JS
 export type WebGLProgram = i32; //externref;
@@ -2201,8 +2201,8 @@ export class WebGLRenderingContext {
         return getSupportedExtensions(this.gl_id);
     }
 
-    @inline getExtension(name: string): object_ {
-        return getExtension(this.gl_id, name);
+    @inline getExtension(name: string): void {
+        getExtension(this.gl_id, name);
     }
 
     @inline activeTexture(texture: GLenum): void {

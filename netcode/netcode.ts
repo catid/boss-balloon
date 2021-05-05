@@ -440,7 +440,7 @@ export class TimeSync {
             const new_send_ts = this.TransformRemoteToLocal(remote_ts);
             const new_owd = i64(local_ts - new_send_ts);
 
-            consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
+            //consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
 
             // If the new trip time looks worse:
             // Note: old_owd > 0 check added because sometimes the timestamps are crazy
@@ -506,7 +506,7 @@ export class TimeSync {
 
         // If we have seen this sample:
         if (samples.length > 0 && samples[samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
-            consoleLog("Ignoring drift sample repeat");
+            //consoleLog("Ignoring drift sample repeat");
             return;
         }
 
@@ -518,11 +518,11 @@ export class TimeSync {
             const sample_i = samples[0];
             const sample_j = samples[samples.length - 1];
             const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
-            consoleLog("wide slope = " + m.toString());
+            //consoleLog("wide slope = " + m.toString());
         }
 
         if (samples.length < 50) {
-            consoleLog("Waiting for 50 samples: " + samples.length.toString());
+            //consoleLog("Waiting for 50 samples: " + samples.length.toString());
             return;
         }
 
@@ -530,7 +530,7 @@ export class TimeSync {
             samples.shift();
         }
 
-        const t0 = getMilliseconds();
+        //const t0 = getMilliseconds();
 
         let slopes: Array<f32> = new Array<f32>(0);
 
@@ -550,7 +550,7 @@ export class TimeSync {
         }
 
         if (slopes.length < 50) {
-            consoleLog("Too few slopes");
+            //consoleLog("Too few slopes");
             return;
         }
 
@@ -574,8 +574,8 @@ export class TimeSync {
 
         this.has_slope_estimate = true;
 
-        const t1 = getMilliseconds();
-        consoleLog("Updated slope estimate in " + (t1 - t0).toString() + " msec");
+        //const t1 = getMilliseconds();
+        //consoleLog("Updated slope estimate in " + (t1 - t0).toString() + " msec");
     }
 
     // Takes in a 23-bit timestamp in peer's clock domain,

@@ -239,7 +239,7 @@ export function initASWebGLue(importObject) {
 
   importObject.WebGL.getExtension = (ctx, name_string) => {
     try {
-      WebGL.contextArray[ctx].getExtension(WebGL.getString(name));
+      WebGL.contextArray[ctx].getExtension(WebGL.getString(name_string));
     } catch (err) {
       console.log("getExtension error");
       console.error(err);

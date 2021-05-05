@@ -229,7 +229,7 @@ export function initASWebGLue(importObject) {
   }
 
   importObject.WebGL.getExtension = (ctx, name_string) => {
-    WebGL.contextArray[ctx].getExtension(WebGL.getString(name));
+    WebGL.contextArray[ctx].getExtension(WebGL.getString(name_string));
   }
 
   importObject.WebGL.activeTexture = (ctx, texture) => {
@@ -287,6 +287,7 @@ export function initASWebGLue(importObject) {
   importObject.WebGL["bufferData<f32>"] = bufferdata;
   importObject.WebGL["bufferData<f64>"] = bufferdata;
   importObject.WebGL["bufferData<i32>"] = bufferdata;
+  importObject.WebGL["bufferData<u16>"] = bufferdata;
 
   // LAST TWO PARAMETERS ARE IN WEBGL 2.0
   importObject.WebGL.bufferSubData = (target, dstByteOffset, srcData, srcOffset, length) => {

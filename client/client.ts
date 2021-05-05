@@ -2,6 +2,7 @@
 // Imports
 
 import { RenderContext } from "./gl/RenderContext";
+import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./gl/RenderText";
 import { Box3 } from "../node_modules/as-3d-math/src/as/index";
 import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
 
@@ -17,14 +18,6 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
-
-
-//------------------------------------------------------------------------------
-// Initialization
-
-export function Initialize(): void {
-    new RenderContext();
-}
 
 
 //------------------------------------------------------------------------------
@@ -101,35 +94,6 @@ function OnPlayerKilled(killer: Player, killee: Player): void {
 
 function OnChat(player: Player, m: string): void {
     consoleLog("Chat: " + m.toString());
-}
-
-
-//------------------------------------------------------------------------------
-// Render
-
-let render_last_msec: f64 = 0;
-
-export function RenderFrame(
-    now_msec: f64,
-    finger_x: i32, finger_y: i32,
-    canvas_w: i32, canvas_h: i32): void
-{
-    let dt: f64 = now_msec - render_last_msec;
-    if (dt > 5000) {
-        dt = 0;
-    }
-    render_last_msec = now_msec;
-
-    RenderContext.I.UpdateViewport(canvas_w, canvas_h);
-    RenderContext.I.Clear();
-
-    // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = TimeConverter.MsecToTime(now_msec);
-
-    //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
-
-    // Collect GC after render tasks are done
-    __collect();
 }
 
 
@@ -366,4 +330,61 @@ export function SendChatRequest(m: string): i32 {
 export function SendTimeSync(): void {
     const send_msec = getMilliseconds();
     sendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
+}
+
+
+//------------------------------------------------------------------------------
+// Initialization
+
+let firacode_font: RenderTextProgram;
+let hello_world1: RenderTextData;
+let hello_world2: RenderTextData;
+
+export function Initialize(): void {
+    new RenderContext();
+
+    firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
+
+    hello_world1 = firacode_font.GenerateLine("Hello World");
+    hello_world2 = firacode_font.GenerateLine("Test");
+}
+
+
+//------------------------------------------------------------------------------
+// Render
+
+let render_last_msec: f64 = 0;
+
+export function RenderFrame(
+    now_msec: f64,
+    finger_x: i32, finger_y: i32,
+    canvas_w: i32, canvas_h: i32): void
+{
+    let dt: f64 = now_msec - render_last_msec;
+    if (dt > 5000) {
+        dt = 0;
+    }
+    render_last_msec = now_msec;
+
+    RenderContext.I.UpdateViewport(canvas_w, canvas_h);
+    RenderContext.I.Clear();
+
+    // Convert timestamp to integer with 1/4 msec (desired) precision
+    let t: u64 = TimeConverter.MsecToTime(now_msec);
+
+    //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
+
+    // Font test:
+
+    firacode_font.BeginRender();
+
+    firacode_font.SetColor(1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0);
+    firacode_font.Render(RenderTextHorizontal.Center, RenderTextVertical.Center, 0.5, 0.5, 0.25, hello_world1);
+
+    firacode_font.SetColor(1.0, 1.0, 0.0,  0.0, 1.0, 1.0,  1.0, 0.0, 1.0);
+    firacode_font.Render(RenderTextHorizontal.Center, RenderTextVertical.Center, 0.5, 0.6, 0.1, hello_world2);
+
+
+    // Collect GC after render tasks are done
+    __collect();
 }
