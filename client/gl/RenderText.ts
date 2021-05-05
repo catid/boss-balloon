@@ -372,7 +372,7 @@ export class RenderTextProgram {
             const xy_left: f32 = x;
             const xy_right: f32 = x + 1.0;
             const xy_top: f32 = y;
-            const xy_bottom: f32 = y + f32(this.font_h) / f32(info.advance);
+            const xy_bottom: f32 = y + this.scale_y_factor;
 
             const uv_left: f32 = f32(info.x + info.originX) * inv_w;
             const uv_right: f32 = uv_left + f32(info.advance) * inv_w;
@@ -447,9 +447,9 @@ export class RenderTextProgram {
             x -= data.width * scale;
         }
         if (align_y == RenderTextVertical.Center) {
-            y -= data.width * 0.5 * scale;
+            y -= data.height * 0.5 * scale;
         } else if (align_y == RenderTextVertical.Bottom) {
-            y -= data.width * scale;
+            y -= data.height * scale;
         }
 
         gl.uniform2f(this.u_xy, x, y);
