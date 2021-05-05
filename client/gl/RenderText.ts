@@ -38,14 +38,14 @@ const kFragmentShaderCode: string = `
     void main() {
         float sample = texture2D(u_sampler, uv_coord).r;
 
-        float dist = (sample - 0.5) + 0.5;
+        float dist = (sample - 0.5) * 16.0 + 0.5;
 
         // Stroked text
         float stroke_alpha = clamp(dist, 0.0, 1.0);
-        float back_alpha = clamp(dist + 0.125, 0.0, 1.0);
+        float back_alpha = clamp(dist + 0.02, 0.0, 1.0);
 
-        vec3 inner_color = u_foreground_color * (1.0 - stroke_alpha) + u_stroke_color * stroke_alpha;
-        gl_FragColor = vec4(inner_color * (1.0 - back_alpha) + u_background_color * back_alpha, 1.0);
+        vec3 inner_color = u_foreground_color * (stroke_alpha) + u_stroke_color * (1.0 - stroke_alpha);
+        gl_FragColor = vec4(inner_color * (back_alpha) + u_background_color * (1.0 - back_alpha), 1.0);
     }
 `;
 
@@ -122,6 +122,7 @@ export class RenderTextProgram {
 
     // Vertex shader attributes/uniforms:
     a_position: GLint;
+    a_texcoord: GLint;
     u_xy: WebGLUniformLocation;
     u_scale: WebGLUniformLocation;
 
@@ -155,7 +156,6 @@ export class RenderTextProgram {
         this.letters.set(55, new Letter(85, 46, 28, 37, 4, 29, 19));
         this.letters.set(56, new Letter(808, 0, 30, 37, 5, 30, 19));
         this.letters.set(57, new Letter(545, 0, 29, 38, 5, 30, 19));
-        this.letters.set(32, new Letter(617, 83, 14, 14, 7, 7, 19));
         this.letters.set(33, new Letter(169, 46, 19, 37, 0, 29, 19));
         this.letters.set(34, new Letter(445, 83, 23, 22, 2, 31, 19));
         this.letters.set(35, new Letter(412, 46, 30, 36, 5, 29, 19));
@@ -275,6 +275,7 @@ export class RenderTextProgram {
         gl.useProgram(this.shader_program);
 
         this.a_position = gl.getAttribLocation(this.shader_program, "a_position");
+        this.a_texcoord = gl.getAttribLocation(this.shader_program, "a_texcoord");
 
         this.u_xy = gl.getUniformLocation(this.shader_program, "u_xy");
         this.u_scale = gl.getUniformLocation(this.shader_program, "u_scale");
@@ -306,7 +307,7 @@ export class RenderTextProgram {
         //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         if (!this.texture_ready) {
-            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, +false);
             gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, +true);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.image);
 
@@ -316,11 +317,13 @@ export class RenderTextProgram {
         }
 
         gl.enableVertexAttribArray(this.a_position);
+        gl.enableVertexAttribArray(this.a_texcoord);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertices_buffer);
 
         // attribute | dimensions | data type | normalize | stride bytes | offset bytes
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 16, 0);
+        gl.vertexAttribPointer(this.a_texcoord, 2, gl.FLOAT, +false, 16, 8);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indices_buffer);
     }
@@ -366,12 +369,12 @@ export class RenderTextProgram {
 
             const info = this.letters.get(letter);
 
-            const xy_left: f32 = x;
-            const xy_right: f32 = x + 1.0;
+            const xy_left: f32 = x + f32(info.originX) / f32(info.w);
+            const xy_right: f32 = xy_left + f32(info.w - info.originX) / f32(info.w);
             const xy_top: f32 = y;
-            const xy_bottom: f32 = y + this.scale_y_factor;
+            const xy_bottom: f32 = y + 1.0;
 
-            const uv_left: f32 = (f32(info.x + info.originX) - f32(info.advance) * 0.5) * inv_w;
+            const uv_left: f32 = f32(info.x + info.originX) * inv_w;
             const uv_right: f32 = uv_left + f32(info.advance) * inv_w;
             const uv_top: f32 = f32(info.y + info.originY - this.font_y_offset) * inv_h;
             const uv_bottom: f32 = uv_top + f32(this.font_h) * inv_h;

@@ -346,7 +346,7 @@ export function Initialize(): void {
     firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
 
     hello_world1 = firacode_font.GenerateLine("Hello World");
-    hello_world2 = firacode_font.GenerateLine("Test");
+    hello_world2 = firacode_font.GenerateLine("Test 1 2 3");
 }
 
 
@@ -378,11 +378,11 @@ export function RenderFrame(
 
     firacode_font.BeginRender();
 
-    firacode_font.SetColor(1.0, 0.0, 0.0,  0.0, 1.0, 0.0,  0.0, 0.0, 1.0);
+    firacode_font.SetColor(0.5, 0.0, 0.0,  1.0, 1.0, 1.0,  0.0, 0.0, 0.0);
     firacode_font.Render(RenderTextHorizontal.Left, RenderTextVertical.Top, 0.0, 0.0, 1/hello_world1.width, hello_world1);
 
-    firacode_font.SetColor(1.0, 1.0, 0.0,  0.0, 1.0, 1.0,  1.0, 0.0, 1.0);
-    firacode_font.Render(RenderTextHorizontal.Left, RenderTextVertical.Top, 0.0, 0.5, 1/hello_world1.width, hello_world2);
+    firacode_font.SetColor(0.0, 0.5, 0.0,  1.0, 1.0, 1.0,  0.0, 0.0, 0.0);
+    firacode_font.Render(RenderTextHorizontal.Left, RenderTextVertical.Top, 0.0, 0.5, 1/hello_world2.width, hello_world2);
 
 
     // Collect GC after render tasks are done

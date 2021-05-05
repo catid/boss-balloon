@@ -17,7 +17,6 @@ const kFiraCodeFont = {
         "7":{"x":85,"y":46,"width":28,"height":37,"originX":4,"originY":29,"advance":19},
         "8":{"x":808,"y":0,"width":30,"height":37,"originX":5,"originY":30,"advance":19},
         "9":{"x":545,"y":0,"width":29,"height":38,"originX":5,"originY":30,"advance":19},
-        " ":{"x":617,"y":83,"width":14,"height":14,"originX":7,"originY":7,"advance":19},
         "!":{"x":169,"y":46,"width":19,"height":37,"originX":0,"originY":29,"advance":19},
         "\"":{"x":445,"y":83,"width":23,"height":22,"originX":2,"originY":31,"advance":19},
         "#":{"x":412,"y":46,"width":30,"height":36,"originX":5,"originY":29,"advance":19},
