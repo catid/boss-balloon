@@ -465,13 +465,18 @@ export function RenderFrame(
         self = player_map.get(u8(SelfId));
     }
     if (self != null) {
+        self.ax = 0;
+        self.ay = 0;
+
         const fcx = finger_x - canvas_w / 2;
         const fcy = finger_y - canvas_h / 2;
         const mag: f32 = f32(Math.sqrt(fcx * fcx + fcy * fcy));
-        const limit: f32 = 0.001;
-        if (mag > 0) {
-            self.ax = f32(fcx) * limit / mag;
-            self.ay = f32(fcy) * limit / mag;
+        if (mag > f32(canvas_w / 10)) {
+            const limit: f32 = 0.001;
+            if (mag > 0) {
+                self.ax = f32(fcx) * limit / mag;
+                self.ay = f32(fcy) * limit / mag;
+            }
         }
     }
 
