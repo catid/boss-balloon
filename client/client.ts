@@ -5,6 +5,7 @@ import { RenderContext } from "./gl/RenderContext";
 import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./gl/RenderText";
 import { Box3 } from "../node_modules/as-3d-math/src/as/index";
 import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
+import { RenderPlayerProgram, RenderPlayerData } from "./gl/RenderPlayer";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -73,14 +74,16 @@ class Player {
     name: string = "";
 
     size: u8 = 0;
-    x: i32 = 0;
-    y: i32 = 0;
-    vx: i32 = 0;
-    vy: i32 = 0;
-    ax: i32 = 0;
-    ay: i32 = 0;
+    x: f32 = 0;
+    y: f32 = 0;
+    vx: f32 = 0;
+    vy: f32 = 0;
+    ax: f32 = 0;
+    ay: f32 = 0;
 
     LastPositionMessage: PositionMessage = new PositionMessage();
+
+    name_data: RenderTextData | null = null;
 
     constructor() {
     }
@@ -264,10 +267,18 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             }
 
             player.name = String.UTF8.decodeUnsafe(ptr + 15, name_len, false);
+            player.name_data = firacode_font.GenerateLine(player.name);
+
+            consoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
 
             offset += 15 + name_len;
         } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
-            player_map.delete(load<u8>(ptr, 1));
+            let id: u8 = load<u8>(ptr, 1);
+
+            player_map.delete(id);
+
+            consoleLog("RemovePlayer: " + id.toString());
+
             offset += 2;
         } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
             let killer_id: u8 = load<u8>(ptr, 1);
@@ -337,16 +348,13 @@ export function SendTimeSync(): void {
 // Initialization
 
 let firacode_font: RenderTextProgram;
-let hello_world1: RenderTextData;
-let hello_world2: RenderTextData;
+let player_prog: RenderPlayerProgram;
 
 export function Initialize(): void {
     new RenderContext();
 
     firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
-
-    hello_world1 = firacode_font.GenerateLine("Hello World");
-    hello_world2 = firacode_font.GenerateLine("Test 1 2 3");
+    player_prog = new RenderPlayerProgram();
 }
 
 
@@ -354,6 +362,86 @@ export function Initialize(): void {
 // Render
 
 let render_last_msec: f64 = 0;
+
+function ObjectToScreenX(x: f32, sx: f32): f32 {
+    return (x - sx) * 0.001 + 0.5;
+}
+function ObjectToScreenY(y: f32, sy: f32): f32 {
+    return (y - sy) * 0.001 + 0.5;
+}
+
+function RenderPlayers(t: u64, sx: f32, sy: f32): void {
+    const players = player_map.values();
+    const players_count = players.length;
+
+    if (players_count == 0) {
+        return;
+    }
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = players[i];
+
+        const x = ObjectToScreenX(player.x, sx);
+        const y = ObjectToScreenY(player.y, sy);
+
+        player_prog.DrawPlayer(
+            1.0, 0.5, 0.5,
+            x, y, 0.1, t);
+    }
+
+    firacode_font.BeginRender();
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = players[i];
+
+        if (player.name_data == null) {
+            continue;
+        }
+
+        firacode_font.SetColor(0.5, 1.0, 0.5,  0.0, 0.0, 0.0);
+
+        const x = ObjectToScreenX(player.x, sx);
+        const y = ObjectToScreenY(player.y, sy);
+
+        firacode_font.Render(
+            RenderTextHorizontal.Center, RenderTextVertical.Center,
+            x, y,
+            0.15/player.name_data!.width, player.name_data!);
+    }
+}
+
+function SimulationStep(dt: f32): void {
+    const players = player_map.values();
+    const players_count = players.length;
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = players[i];
+
+        player.vx += player.ax * dt;
+        player.vy += player.ay * dt;
+
+        const mag: f32 = f32(Math.sqrt(player.vx * player.vx + player.vy * player.vy));
+        const limit: f32 = 1.0;
+        if (mag > limit) {
+            player.vx *= limit / mag;
+            player.vy *= limit / mag;
+        }
+
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
+    }
+}
+
+function Physics(dt: f32): void {
+    while (dt >= 10.0) {
+        SimulationStep(10.0);
+        dt -= 10.0;
+    }
+
+    if (dt > 0) {
+        SimulationStep(dt);
+    }
+}
 
 export function RenderFrame(
     now_msec: f64,
@@ -372,18 +460,30 @@ export function RenderFrame(
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = TimeConverter.MsecToTime(now_msec);
 
-    //consoleLog("TEST: " + dt.toString() + " at " + finger_x.toString() + ", " + finger_y.toString());
+    let self: Player | null = null;
+    if (SelfId != -1 && player_map.has(u8(SelfId))) {
+        self = player_map.get(u8(SelfId));
+    }
+    if (self != null) {
+        const fcx = finger_x - canvas_w / 2;
+        const fcy = finger_y - canvas_h / 2;
+        const mag: f32 = f32(Math.sqrt(fcx * fcx + fcy * fcy));
+        const limit: f32 = 0.001;
+        if (mag > 0) {
+            self.ax = f32(fcx) * limit / mag;
+            self.ay = f32(fcy) * limit / mag;
+        }
+    }
 
-    // Font test:
+    Physics(f32(dt));
 
-    firacode_font.BeginRender();
+    let sx: f32 = 0, sy: f32 = 0;
+    if (self != null) {
+        sx = self.x;
+        sy = self.y;
+    }
 
-    firacode_font.SetColor(1.0, 0.5, 0.5,  1.0, 1.0, 1.0,  0.0, 0.0, 0.0);
-    firacode_font.Render(RenderTextHorizontal.Center, RenderTextVertical.Center, 0.5, 0.5, 0.5/hello_world1.width, hello_world1);
-
-    firacode_font.SetColor(0.5, 1.0, 0.5,  1.0, 1.0, 1.0,  0.0, 0.0, 0.0);
-    firacode_font.Render(RenderTextHorizontal.Left, RenderTextVertical.Top, 0.0, 0.0, 1/hello_world2.width, hello_world2);
-
+    RenderPlayers(t, sx, sy);
 
     // Collect GC after render tasks are done
     __collect();

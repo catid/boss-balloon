@@ -180,7 +180,13 @@ class WebRTCClient {
                     var variance = Math.random() * 20 - 10;
                     this.syncTimer = setTimeout(() => {
                         if (this.client != null) {
-                            wasmExports.SendTimeSync(this.client);
+                            var send_msec = performance.now();
+                            wasmExports.SendTimeSync(this.client, send_msec);
+
+                            // 10 seconds without data: Disconnect
+                            if (send_msec - this.LastUnreliable > 10000.0) {
+                                this.Close();
+                            }
                         }
 
                         this.dispatchTimeSync();
@@ -191,7 +197,7 @@ class WebRTCClient {
                     }
                 };
                 this.dispatchTimeSync();
-            
+
                 this.reliableSendTimer = setInterval(() => {
                     if (this.client != null) {
                         wasmExports.OnReliableSendTimer(this.client);
@@ -210,6 +216,8 @@ class WebRTCClient {
 
                         // Release resource
                         wasmExports.__unpin(dataRef);
+
+                        this.LastUnreliable = t_msec;
                     }
                 });
                 this.dc_reliable.onMessage((msg) => {

@@ -22,10 +22,10 @@ const kInnerFS: string = `
     precision highp float;
 
     // Input from application:
-    uniform vec3 u_inner_color;
+    uniform vec3 u_color;
 
     void main() {
-        gl_FragColor = vec4(u_inner_color, 1.0);
+        gl_FragColor = vec4(u_color, 1.0);
     }
 `;
 
@@ -52,8 +52,8 @@ const kOuterFS: string = `
     precision highp float;
 
     // Input from application:
-    uniform vec3 u_foreground_color;
-    uniform vec3 u_background_color;
+    uniform vec3 u_color;
+    uniform float u_t;
 
     // Input from vertex shader:
     varying vec2 fs_pos;
@@ -62,11 +62,11 @@ const kOuterFS: string = `
         // Radius of circle is always 1, so dist2 = 1 on the border
         float dist2 = fs_pos.x * fs_pos.x + fs_pos.y * fs_pos.y;
 
-        float beta = (dist2 - 0.5) * 16.0 + 0.5;
+        float beta = sin(u_t) + 3.0;
 
-        float alpha = clamp(beta, 0.0, 1.0);
+        float alpha = clamp((dist2 - 0.8) * beta, 0.0, 1.0);
 
-        gl_FragColor = vec4(mix(u_background_color, u_foreground_color, alpha), 1.0);
+        gl_FragColor = vec4(u_color, 1.0 - alpha);
     }
 `;
 
@@ -88,8 +88,8 @@ export class RenderPlayerData {
             cells = 127;
         }
 
-        const base_angle: f32 = 2.0 * Math.PI / f32(cells);
-        const outer_radius_max: f32 = outer_radius_min / Math.cos(base_angle);
+        const base_angle: f32 = 2.0 * f32(Math.PI) / f32(cells);
+        const outer_radius_max: f32 = outer_radius_min / f32(Math.cos(base_angle));
 
         this.vertices = new StaticArray<f32>(2 + 4 * cells);
         this.inner_indices = new StaticArray<u8>(3 * cells);
@@ -99,13 +99,13 @@ export class RenderPlayerData {
         this.vertices[0] = 0.0;
         this.vertices[1] = 0.0;
 
-        let iv: i32 = 2, ii: i32 = 1;
-        let ov: i32 = 2 + 2 * cells, oi: i32 = (1 + cells) * 3;
+        let iv: i32 = 2, ii: i32 = 0;
+        let ov: i32 = 2 + 2 * cells, oi: i32 = 0;
 
         for (let i: i32 = 0; i < cells; ++i) {
             const angle: f32 = base_angle * f32(i);
-            const cos_angle: f32 = Math.cos(angle);
-            const sin_angle: f32 = Math.sin(angle);
+            const cos_angle: f32 = f32(Math.cos(angle));
+            const sin_angle: f32 = f32(Math.sin(angle));
 
             this.vertices[iv + 0] = inner_radius_max * cos_angle;
             this.vertices[iv + 1] = inner_radius_max * sin_angle;
@@ -114,23 +114,23 @@ export class RenderPlayerData {
             this.vertices[ov + 1] = outer_radius_max * sin_angle;
 
             this.inner_indices[ii + 0] = 0;
-            this.inner_indices[ii + 1] = i + 1;
+            this.inner_indices[ii + 1] = u8(i + 1);
             if (i == cells - 1) {
                 this.inner_indices[ii + 2] = 1;
                 this.outer_indices[oi + 2] = 1;
-                this.outer_indices[oi + 4] = 1 + cells;
+                this.outer_indices[oi + 4] = u8(1 + cells);
                 this.outer_indices[oi + 5] = 1;
             } else {
-                this.inner_indices[ii + 2] = i + 2;
-                this.outer_indices[oi + 2] = i + 2;
-                this.outer_indices[oi + 4] = 2 + cells + i;
-                this.outer_indices[oi + 5] = i + 2;
+                this.inner_indices[ii + 2] = u8(i + 2);
+                this.outer_indices[oi + 2] = u8(i + 2);
+                this.outer_indices[oi + 4] = u8(2 + cells + i);
+                this.outer_indices[oi + 5] = u8(i + 2);
             }
 
-            this.outer_indices[oi + 0] = i + 1;
-            this.outer_indices[oi + 1] = 1 + cells + i;
+            this.outer_indices[oi + 0] = u8(i + 1);
+            this.outer_indices[oi + 1] = u8(1 + cells + i);
 
-            this.outer_indices[oi + 3] = 1 + cells + i;
+            this.outer_indices[oi + 3] = u8(1 + cells + i);
 
             iv += 2;
             ii += 3;
@@ -148,21 +148,23 @@ export class RenderPlayerProgram {
     inner_a_position: GLint;
     inner_u_xy: WebGLUniformLocation;
     inner_u_scale: WebGLUniformLocation;
-    inner_u_inner_color: WebGLUniformLocation;
+    inner_u_color: WebGLUniformLocation;
 
     // Outer program
     outer_program: WebGLProgram;
     outer_a_position: GLint;
     outer_u_xy: WebGLUniformLocation;
     outer_u_scale: WebGLUniformLocation;
-    outer_u_foreground_color: WebGLUniformLocation;
-    outer_u_background_color: WebGLUniformLocation;
+    outer_u_color: WebGLUniformLocation;
+    outer_u_t: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
     inner_indices_buffer: WebGLBuffer;
     outer_indices_buffer: WebGLBuffer;
 
-    constructor(texture_image_location: string) {
+    data: RenderPlayerData;
+
+    constructor() {
         const gl = RenderContext.I.gl;
 
         gl.getExtension('OES_standard_derivatives');
@@ -183,6 +185,11 @@ export class RenderPlayerProgram {
         gl.linkProgram(this.inner_program);
         gl.useProgram(this.inner_program);
 
+        this.inner_a_position = gl.getAttribLocation(this.inner_program, "a_position");
+        this.inner_u_xy = gl.getUniformLocation(this.inner_program, "u_xy");
+        this.inner_u_scale = gl.getUniformLocation(this.inner_program, "u_scale");
+        this.inner_u_color = gl.getUniformLocation(this.inner_program, "u_color");
+
         const outer_vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(outer_vs, kOuterVS);
         gl.compileShader(outer_vs);
@@ -197,34 +204,32 @@ export class RenderPlayerProgram {
         gl.linkProgram(this.outer_program);
         gl.useProgram(this.outer_program);
 
-        this.inner_a_position = gl.getAttribLocation(this.inner_program, "a_position");
-        this.inner_u_xy = gl.getUniformLocation(this.inner_program, "u_xy");
-        this.inner_u_scale = gl.getUniformLocation(this.inner_program, "u_scale");
-        this.inner_u_inner_color = gl.getUniformLocation(this.inner_program, "u_inner_color");
-
         this.outer_a_position = gl.getAttribLocation(this.outer_program, "a_position");
         this.outer_u_xy = gl.getUniformLocation(this.outer_program, "u_xy");
         this.outer_u_scale = gl.getUniformLocation(this.outer_program, "u_scale");
-        this.outer_u_foreground_color = gl.getUniformLocation(this.outer_program, "u_foreground_color");
-        this.outer_u_background_color = gl.getUniformLocation(this.outer_program, "u_background_color");
+        this.outer_u_color = gl.getUniformLocation(this.outer_program, "u_color");
+        this.outer_u_t = gl.getUniformLocation(this.outer_program, "u_t");
 
         this.vertices_buffer = gl.createBuffer();
         this.inner_indices_buffer = gl.createBuffer();
         this.outer_indices_buffer = gl.createBuffer();
+
+        this.data = new RenderPlayerData(12, 0.9, 1.1);
     }
 
-    public Render(
+    public DrawPlayer(
         foreground_r: f32, foreground_g: f32, foreground_b: f32,
-        background_r: f32, background_g: f32, background_b: f32,
         x: f32, y: f32,
         scale: f32,
-        data: RenderPlayerData): void {
+        t: u64): void {
         const gl = RenderContext.I.gl;
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertices_buffer);
+        const data = this.data;
 
 
         gl.useProgram(this.inner_program);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertices_buffer);
 
         gl.enableVertexAttribArray(this.inner_a_position);
 
@@ -233,7 +238,7 @@ export class RenderPlayerProgram {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.inner_indices_buffer);
 
-        gl.uniform3f(this.inner_u_inner_color, foreground_r, foreground_g, foreground_b);
+        gl.uniform3f(this.inner_u_color, foreground_r, foreground_g, foreground_b);
 
         gl.uniform2f(this.inner_u_xy, x, y);
         gl.uniform1f(this.inner_u_scale, scale);
@@ -242,7 +247,7 @@ export class RenderPlayerProgram {
         gl.bufferData<f32>(gl.ARRAY_BUFFER, data.vertices, gl.DYNAMIC_DRAW);
         gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, data.inner_indices, gl.DYNAMIC_DRAW);
 
-        gl.drawElements(gl.TRIANGLES, data.inner_indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.drawElements(gl.TRIANGLES, data.inner_indices.length, gl.UNSIGNED_BYTE, 0);
 
 
         gl.useProgram(this.outer_program);
@@ -254,15 +259,15 @@ export class RenderPlayerProgram {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.outer_indices_buffer);
 
-        gl.uniform3f(this.outer_u_foreground_color, foreground_r, foreground_g, foreground_b);
-        gl.uniform3f(this.outer_u_background_color, background_r, background_g, background_b);
+        gl.uniform3f(this.outer_u_color, 1, 1, 1);
 
         gl.uniform2f(this.outer_u_xy, x, y);
         gl.uniform1f(this.outer_u_scale, scale);
+        gl.uniform1f(this.outer_u_t, f32(t/4 % 1024) * 2.0 * f32(Math.PI) / 1024.0);
 
         // Use DYNAMIC_DRAW because we want to change this for each line we render
-        gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, data.inner_indices, gl.DYNAMIC_DRAW);
+        gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, data.outer_indices, gl.DYNAMIC_DRAW);
 
-        gl.drawElements(gl.TRIANGLES, data.inner_indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.drawElements(gl.TRIANGLES, data.outer_indices.length, gl.UNSIGNED_BYTE, 0);
     }
 }

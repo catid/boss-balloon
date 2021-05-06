@@ -211,7 +211,7 @@ export function initASWebGLue(importObject) {
   importObject.WebGL.createContextFromCanvas = (canvas_id, context_type) => {
     try {
       const canvas = document.getElementById(WebGL.getString(canvas_id));
-      const gl = canvas.getContext(WebGL.getString(context_type));
+      const gl = canvas.getContext(WebGL.getString(context_type), {alpha: false});
       let id = WebGL.contextArray.findIndex((element) => element == null);
 
       if (id == -1) {

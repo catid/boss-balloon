@@ -29,7 +29,6 @@ const kFragmentShaderCode: string = `
     // Input from application:
     uniform vec3 u_foreground_color;
     uniform vec3 u_stroke_color;
-    uniform vec3 u_background_color;
 
     // Input from vertex shader:
     uniform sampler2D u_sampler;
@@ -44,8 +43,8 @@ const kFragmentShaderCode: string = `
         float stroke_alpha = clamp(dist, 0.0, 1.0);
         float back_alpha = clamp(dist + 0.5, 0.0, 1.0);
 
-        vec3 inner_color = u_foreground_color * (stroke_alpha) + u_stroke_color * (1.0 - stroke_alpha);
-        gl_FragColor = vec4(inner_color * (back_alpha) + u_background_color * (1.0 - back_alpha), 1.0);
+        vec3 inner_color = mix(u_stroke_color, u_foreground_color, stroke_alpha);
+        gl_FragColor = vec4(inner_color, back_alpha);
     }
 `;
 
@@ -129,7 +128,6 @@ export class RenderTextProgram {
     // Fragment shader uniforms:
     u_foreground_color: WebGLUniformLocation;
     u_stroke_color: WebGLUniformLocation;
-    u_background_color: WebGLUniformLocation;
     u_sampler: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
@@ -281,7 +279,6 @@ export class RenderTextProgram {
 
         this.u_foreground_color = gl.getUniformLocation(this.shader_program, "u_foreground_color");
         this.u_stroke_color = gl.getUniformLocation(this.shader_program, "u_stroke_color");
-        this.u_background_color = gl.getUniformLocation(this.shader_program, "u_background_color");
         this.u_sampler = gl.getUniformLocation(this.shader_program, "u_sampler");
 
         this.vertices_buffer = gl.createBuffer();
@@ -329,12 +326,15 @@ export class RenderTextProgram {
 
     public SetColor(
         foreground_r: f32, foreground_g: f32, foreground_b: f32,
-        stroke_r: f32, stroke_g: f32, stroke_b: f32,
-        background_r: f32, background_g: f32, background_b: f32): void {
+        stroke_r: f32, stroke_g: f32, stroke_b: f32): void {
+        if (!this.texture_ready) {
+            return;
+        }
+
         const gl = RenderContext.I.gl;
+
         gl.uniform3f(this.u_foreground_color, foreground_r, foreground_g, foreground_b);
         gl.uniform3f(this.u_stroke_color, stroke_r, stroke_g, stroke_b);
-        gl.uniform3f(this.u_background_color, background_r, background_g, background_b);
     }
 
     // Specify anchor point location for text

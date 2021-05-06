@@ -12,6 +12,11 @@ export class RenderContext {
             RenderContext.I = this;
         }
         this.gl = new WebGLRenderingContext('cnvs', 'webgl2');
+
+        this.Clear();
+        this.gl.colorMask(true, true, true, false);
+        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+        this.gl.enable(this.gl.BLEND);
     }
 
     public UpdateViewport(canvas_w: i32, canvas_h: i32): void {
@@ -27,5 +32,9 @@ export class RenderContext {
     public Clear(): void {
         this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
         this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    }
+
+    public Flush(): void {
+        this.gl.flush();
     }
 }

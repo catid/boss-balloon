@@ -101,9 +101,11 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     client.name = "Player " + client.player_id.toString();
     client.score = 100;
 
-    SendTimeSync(client);
+    SendTimeSync(client, now_msec);
 
     sendReliable(client.id, Netcode.MakeSetId(client.player_id));
+
+    Clients.set(id, client);
 
     // Update all the player lists
     let new_player = Netcode.MakeSetPlayer(client.player_id, client.score, client.wins, client.losses, client.skin, client.team, client.name);
@@ -119,8 +121,6 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
             }
         }
     }
-
-    Clients.set(id, client);
 
     return client;
 }
@@ -254,7 +254,6 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 //------------------------------------------------------------------------------
 // Message Serializers
 
-export function SendTimeSync(client: ConnectedClient): void {
-    const send_msec = getMilliseconds();
+export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
     sendUnreliable(client.id, client.TimeSync.MakeTimeSync(client.TimeConverter.MsecToTime(send_msec)));
 }
