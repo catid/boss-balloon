@@ -134,7 +134,6 @@ export class RenderTextProgram {
 
     vertices_buffer: WebGLBuffer;
     indices_buffer: WebGLBuffer;
-    position_al: GLint;
 
     InitFont(): void {
         // Added by hand

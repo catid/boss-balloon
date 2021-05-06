@@ -288,6 +288,7 @@ export function initASWebGLue(importObject) {
   importObject.WebGL["bufferData<f64>"] = bufferdata;
   importObject.WebGL["bufferData<i32>"] = bufferdata;
   importObject.WebGL["bufferData<u16>"] = bufferdata;
+  importObject.WebGL["bufferData<u8>"] = bufferdata;
 
   // LAST TWO PARAMETERS ARE IN WEBGL 2.0
   importObject.WebGL.bufferSubData = (target, dstByteOffset, srcData, srcOffset, length) => {
