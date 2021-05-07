@@ -9,6 +9,7 @@ import { RenderPlayerProgram, RenderPlayerData } from "./gl/RenderPlayer";
 import { RenderStringProgram } from "./gl/RenderString";
 import { RenderBombProgram } from "./gl/RenderBomb";
 import { RenderBulletProgram } from "./gl/RenderBullet";
+import { RenderMapProgram } from "./gl/RenderMap";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -355,6 +356,7 @@ let player_prog: RenderPlayerProgram;
 let string_prog: RenderStringProgram;
 let bomb_prog: RenderBombProgram;
 let bullet_prog: RenderBulletProgram;
+let map_prog: RenderMapProgram;
 
 export function Initialize(): void {
     new RenderContext();
@@ -364,6 +366,7 @@ export function Initialize(): void {
     string_prog = new RenderStringProgram();
     bomb_prog = new RenderBombProgram();
     bullet_prog = new RenderBulletProgram();
+    map_prog = new RenderMapProgram();
 }
 
 
@@ -646,6 +649,8 @@ export function RenderFrame(
             hack_last_bullet_fire = t;
         }
     }
+
+    map_prog.DrawMap(sx/1000.0, sy/1000.0, 1.0, t);
 
     RenderPlayers(t, sx, sy);
     RenderBombs(t, sx, sy);
