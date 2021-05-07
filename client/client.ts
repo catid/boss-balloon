@@ -10,6 +10,7 @@ import { RenderStringProgram } from "./gl/RenderString";
 import { RenderBombProgram } from "./gl/RenderBomb";
 import { RenderBulletProgram } from "./gl/RenderBullet";
 import { RenderMapProgram } from "./gl/RenderMap";
+import { RenderArrowProgram } from "./gl/RenderArrow";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -77,6 +78,8 @@ class Player {
     team: u8 = 0;
     name: string = "";
 
+    is_self: bool = false;
+
     size: u8 = 0;
     x: f32 = 0;
     y: f32 = 0;
@@ -84,6 +87,10 @@ class Player {
     vy: f32 = 0;
     ax: f32 = 0;
     ay: f32 = 0;
+
+    temp_screen_x: f32 = 0;
+    temp_screen_y: f32 = 0;
+    on_screen: bool = false;
 
     LastPositionMessage: PositionMessage = new PositionMessage();
 
@@ -357,6 +364,7 @@ let string_prog: RenderStringProgram;
 let bomb_prog: RenderBombProgram;
 let bullet_prog: RenderBulletProgram;
 let map_prog: RenderMapProgram;
+let arrow_prog: RenderArrowProgram;
 
 export function Initialize(): void {
     new RenderContext();
@@ -367,6 +375,7 @@ export function Initialize(): void {
     bomb_prog = new RenderBombProgram();
     bullet_prog = new RenderBulletProgram();
     map_prog = new RenderMapProgram();
+    arrow_prog = new RenderArrowProgram();
 }
 
 
@@ -404,6 +413,9 @@ function ObjectToScreenX(x: f32, sx: f32): f32 {
 function ObjectToScreenY(y: f32, sy: f32): f32 {
     return (y - sy) * 0.001 + 0.5;
 }
+function ObjectOnScreen(x: f32, y: f32, r: f32): bool {
+    return x >= -r && x <= 1.0 + r && y >= -r && y <= 1.0 + r;
+}
 
 function RenderPlayers(t: u64, sx: f32, sy: f32): void {
     const players = player_map.values();
@@ -419,9 +431,19 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         const x = ObjectToScreenX(player.x, sx);
         const y = ObjectToScreenY(player.y, sy);
 
+        player.temp_screen_x = x;
+        player.temp_screen_y = y;
+        player.on_screen = ObjectOnScreen(x, y, 0.1);
+
+        if (!player.on_screen) {
+            continue;
+        }
+
         player_prog.DrawPlayer(
             0.8, 0.2, 0.2,
             x, y, 0.02, t);
+
+        string_prog.DrawString(1.0, 0.4, 0.4, x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
     }
 
     firacode_font.BeginRender();
@@ -429,18 +451,15 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
     for (let i: i32 = 0; i < players_count; ++i) {
         const player = players[i];
 
-        if (player.name_data == null) {
+        if (player.name_data == null || !player.on_screen) {
             continue;
         }
 
         firacode_font.SetColor(0.5, 1.0, 0.5,  0.0, 0.0, 0.0);
 
-        const x = ObjectToScreenX(player.x, sx);
-        const y = ObjectToScreenY(player.y, sy);
-
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
-            x, y + 0.03,
+            player.temp_screen_x, player.temp_screen_y + 0.03,
             0.16/player.name_data!.width, player.name_data!);
     }
 }
@@ -469,13 +488,86 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
         const x = ObjectToScreenX(bomb.x, sx);
         const y = ObjectToScreenY(bomb.y, sy);
 
+        if (ObjectOnScreen(x, y, 0.1)) {
+            continue;
+        }
+
         bomb_prog.DrawBomb(
             0.8, 0.2, 0.2,
-            x, y, 0.05, t);
+            x, y, 0.02, t);
     }
 }
 
-function SimulationStep(dt: f32): void {
+function clamp(x: f32, maxval: f32, minval: f32): f32 {
+    return max(maxval, min(minval, x));
+}
+
+function RenderArrows(t: u64, sx: f32, sy: f32): void {
+    const players = player_map.values();
+    const players_count = players.length;
+
+    if (players_count == 0) {
+        return;
+    }
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = players[i];
+
+        if (player.on_screen || player.is_self) {
+            continue;
+        }
+
+        let x: f32 = player.x - sx;
+        let y: f32 = player.y - sy;
+        const dist: f32 = f32(Math.sqrt(x * x + y * y));
+        const scale_min: f32 = 0.005;
+        const scale_max: f32 = 0.02;
+        const scale: f32 = scale_min + clamp(scale_max - dist * 0.000003, 0.0, scale_max - scale_min);
+
+        const angle: f32 = f32(Math.atan2(x, y));
+        const edge_offset: f32 = 0.02;
+
+        if (x > y) {
+            if (x > -y) {
+                // right
+                x = 1.0;
+                y = 0.5 * f32(Math.tan(Math.PI * 0.5 - angle)) + 0.5;
+            } else {
+                // top
+                x = 0.5 * f32(Math.tan(Math.PI - angle)) + 0.5;
+                y = 0.0;
+            }
+        } else {
+            if (x > -y) {
+                // bottom
+                x = 0.5 * f32(Math.tan(angle)) + 0.5;
+                y = 1.0;
+            } else {
+                // left
+                x = 0.0;
+                y = 0.5 * f32(Math.tan(angle + Math.PI * 0.5)) + 0.5;
+            }
+        }
+
+        // offset from edge
+        if (x < edge_offset) {
+            x = edge_offset;
+        } else if (x > 1.0 - edge_offset) {
+            x = 1.0 - edge_offset;
+        }
+        if (y < edge_offset) {
+            y = edge_offset;
+        } else if (y > 1.0 - edge_offset) {
+            y = 1.0 - edge_offset;
+        }
+
+        arrow_prog.DrawArrow(
+            0.8, 0.2, 0.2,
+            x, y, scale, angle, t);
+    }
+}
+
+function SimulationStep(dt: f32, t: u64): void {
     const players = player_map.values();
     const players_count = players.length;
 
@@ -484,7 +576,8 @@ function SimulationStep(dt: f32): void {
 
         // TODO: Make slower if ship is larger
 
-        const inv_mass: f32 = 1.0 / 1.0;
+        const mass: f32 = 1.0;
+        const inv_mass: f32 = 1.0 / mass;
 
         let ax: f32 = player.ax * inv_mass;
         let ay: f32 = player.ay * inv_mass;
@@ -492,56 +585,60 @@ function SimulationStep(dt: f32): void {
         let vx = player.vx + ax * dt;
         let vy = player.vy + ay * dt;
 
-        const friction: f32 = 0.001;
-        const vf: f32 = friction * inv_mass;
+        let norm: f32 = f32(Math.sqrt(vx * vx + vy * vy));
+        let mag = norm;
 
-        if (vx > vf) {
-            vx -= vf;
-        } else if (vx < -vf) {
-            vx += vf;
-        } else {
-            vx = 0;
+        if (norm > 0.0) {
+            const friction: f32 = 0.001;
+            const vf: f32 = friction * inv_mass;
+
+            if (mag > vf) {
+                mag -= vf;
+            } else {
+                mag = 0.0;
+            }
+
+            const limit: f32 = 1.0;
+            if (mag > limit) {
+                mag = limit;
+            }
+
+            mag /= norm;
+            vx *= mag;
+            vy *= mag;
+
+            player.vx = vx;
+            player.vy = vy;
+
+            player.x += vx * dt;
+            player.y += vy * dt;
         }
-
-        if (vy > vf) {
-            vy -= vf;
-        } else if (vy < -vf) {
-            vy += vf;
-        } else {
-            vy = 0;
-        }
-
-        const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
-        const limit: f32 = 1.0;
-        if (mag > limit) {
-            const norm_factor = limit / mag;
-            vx *= norm_factor;
-            vy *= norm_factor;
-        }
-
-        player.vx = vx;
-        player.vy = vy;
-
-        player.x += vx * dt;
-        player.y += vy * dt;
     }
 
-    const bomb_count = BombList.length;
-
-    for (let i: i32 = 0; i < bomb_count; ++i) {
+    for (let i: i32 = 0; i < BombList.length; ++i) {
         const bomb = BombList[i];
 
         bomb.x += bomb.vx * dt;
         bomb.y += bomb.vy * dt;
+
+        if (i32(t - bomb.t) > 10_000 * 4) {
+            BombList[i] = BombList[BombList.length - 1];
+            BombList.length--;
+            --i;
+        }
     }
 
-    const bullet_count = BulletList.length;
-
-    for (let i: i32 = 0; i < bullet_count; ++i) {
+    for (let i: i32 = 0; i < BulletList.length; ++i) {
         const bullet = BulletList[i];
 
         bullet.x += bullet.vx * dt;
         bullet.y += bullet.vy * dt;
+
+        if (i32(t - bullet.t) > 10_000 * 4) {
+            BulletList[i] = BulletList[BulletList.length - 1];
+            BulletList.length--;
+            --i;
+        }
     }
 }
 
@@ -549,17 +646,18 @@ let last_t: u64 = 0;
 
 function Physics(t: u64): void {
     let dt: i32 = i32(t - last_t);
-    last_t = t;
 
     const step: i32 = 40;
 
     while (dt >= step) {
-        SimulationStep(f32(step) * 0.25);
+        SimulationStep(f32(step) * 0.25, last_t);
         dt -= step;
+        last_t += step;
     }
 
     if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25);
+        SimulationStep(f32(dt) * 0.25, last_t);
+        last_t += dt;
     }
 }
 
@@ -599,6 +697,8 @@ export function RenderFrame(
                 }
             }
         }
+
+        self.is_self = true;
     }
 
     Physics(t);
@@ -673,6 +773,7 @@ export function RenderFrame(
     RenderPlayers(t, sx, sy);
     RenderBombs(t, sx, sy);
     RenderBullets(t, sx, sy);
+    RenderArrows(t, sx, sy);
 
     if (pointer_active) {
         string_prog.DrawString(
@@ -681,6 +782,10 @@ export function RenderFrame(
             f32(finger_y) / f32(canvas_h),
             0.5, 0.5,
             t);
+    }
+
+    if (self != null) {
+        self.is_self = false;
     }
 
     // Collect GC after render tasks are done

@@ -10,7 +10,11 @@ const kInnerVS: string = `
     uniform vec2 u_xy;
     uniform float u_scale;
 
+    // Output to fragment shader:
+    varying vec2 v_pos;
+
     void main() {
+        v_pos = a_position;
         vec2 p = a_position * u_scale + u_xy;
         // Normalized upper left (0,0) lower right (1,1)
         gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
@@ -23,8 +27,14 @@ const kInnerFS: string = `
     // Input from application:
     uniform vec3 u_color;
 
+    // Input from vertex shader:
+    varying vec2 v_pos;
+
     void main() {
-        gl_FragColor = vec4(u_color, 1.0);
+        // Radius of circle is always 1, so dist2 = 1 on the border
+        float alpha = (sin(atan(v_pos.y, v_pos.x) + 3.14159*0.2) + 1.0) * 0.5;
+
+        gl_FragColor = vec4(mix(u_color, vec3(1.0, 1.0, 1.0), alpha*alpha), 1.0);
     }
 `;
 
@@ -37,10 +47,10 @@ const kOuterVS: string = `
     uniform float u_scale;
 
     // Output to fragment shader:
-    varying vec2 fs_pos;
+    varying vec2 v_pos;
 
     void main() {
-        fs_pos = a_position;
+        v_pos = a_position;
         vec2 p = a_position * u_scale + u_xy;
         // Normalized upper left (0,0) lower right (1,1)
         gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
@@ -55,11 +65,11 @@ const kOuterFS: string = `
     uniform float u_t;
 
     // Input from vertex shader:
-    varying vec2 fs_pos;
+    varying vec2 v_pos;
 
     void main() {
         // Radius of circle is always 1, so dist2 = 1 on the border
-        float x = fs_pos.x * fs_pos.x + fs_pos.y * fs_pos.y;
+        float x = v_pos.x * v_pos.x + v_pos.y * v_pos.y;
 
         float y = (sin(u_t) + 1.0) * 0.05;
 
