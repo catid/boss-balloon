@@ -422,7 +422,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         const y = ObjectToScreenY(player.y, sy);
 
         player_prog.DrawPlayer(
-            1.0, 0.5, 0.5,
+            0.8, 0.2, 0.2,
             x, y, 0.02, t);
     }
 
@@ -443,7 +443,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
             x, y + 0.02,
-            0.1/player.name_data!.width, player.name_data!);
+            0.16/player.name_data!.width, player.name_data!);
     }
 }
 
@@ -457,7 +457,7 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
         const y = ObjectToScreenY(bullet.y, sy);
 
         bullet_prog.DrawBullet(
-            1.0, 1.0, 0.5,
+            0.8, 0.2, 0.2,
             x, y, 0.02, t);
     }
 }
@@ -472,7 +472,7 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
         const y = ObjectToScreenY(bomb.y, sy);
 
         bomb_prog.DrawBomb(
-            1.0, 1.0, 0.5,
+            0.8, 0.2, 0.2,
             x, y, 0.05, t);
     }
 }
@@ -615,37 +615,37 @@ export function RenderFrame(
             let vy = self.vy;
 
             if (vx == 0.0 && vy == 0.0) {
-                vy = 1.0;
-            }
-
-            const bullet_speed: f32 = 0.5;
-
-            const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
-            const vfactor = bullet_speed / mag;
-            vx *= vfactor;
-            vy *= vfactor;
-
-            if (hack_bomb_counter == 0) {
-                const bomb = new BombWeapon;
-                bomb.vx = self.vx + vx;
-                bomb.vy = self.vy + vy;
-                bomb.x = self.x;
-                bomb.y = self.y;
-                bomb.t = t;
-                BombList.push(bomb);
             } else {
-                const bullet = new BulletWeapon;
-                bullet.vx = self.vx + vx;
-                bullet.vy = self.vy + vy;
-                bullet.x = self.x;
-                bullet.y = self.y;
-                bullet.t = t;
-                BulletList.push(bullet);
+                const bullet_speed: f32 = 0.5;
+
+                const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
+                const vfactor = bullet_speed / mag;
+                vx *= vfactor;
+                vy *= vfactor;
+    
+                if (hack_bomb_counter == 0) {
+                    const bomb = new BombWeapon;
+                    bomb.vx = self.vx + vx;
+                    bomb.vy = self.vy + vy;
+                    bomb.x = self.x;
+                    bomb.y = self.y;
+                    bomb.t = t;
+                    BombList.push(bomb);
+                } else {
+                    const bullet = new BulletWeapon;
+                    bullet.vx = self.vx + vx;
+                    bullet.vy = self.vy + vy;
+                    bullet.x = self.x;
+                    bullet.y = self.y;
+                    bullet.t = t;
+                    BulletList.push(bullet);
+                }
+                hack_bomb_counter++;
+                if (hack_bomb_counter >= 4) {
+                    hack_bomb_counter = 0;
+                }
             }
-            hack_bomb_counter++;
-            if (hack_bomb_counter >= 4) {
-                hack_bomb_counter = 0;
-            }
+
             hack_last_bullet_fire = t;
         }
     }

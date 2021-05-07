@@ -113,7 +113,7 @@ const kFragmentShaderCode: string = `
             uv = m*uv + time;
             weight *= 0.6;
         }
-        
+
         //noise ridge colour
         float c1 = 0.0;
         time = u_t * speed * 3.0;
@@ -129,7 +129,7 @@ const kFragmentShaderCode: string = `
         
         c += c1;
         
-        vec3 skycolour = mix(skycolour2, skycolour1, p.y);
+        vec3 skycolour = skycolour2;
         vec3 cloudcolour = vec3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight*c), 0.0, 1.0);
        
         f = cloudcover + cloudalpha*f*r;

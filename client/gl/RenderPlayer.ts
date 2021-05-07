@@ -65,7 +65,7 @@ const kOuterFS: string = `
 
         float alpha = clamp(x * 0.8 - y, 0.0, 1.0);
 
-        gl_FragColor = vec4(u_color, 1.0 - alpha);
+        gl_FragColor = vec4(vec3(0,0,0), 1.0 - alpha);
     }
 `;
 

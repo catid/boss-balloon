@@ -13,7 +13,7 @@ var cnvs = document.getElementById("cnvs");
 //------------------------------------------------------------------------------
 // Audio
 
-var song = new Audio('audio/song-hq.mp3')
+var song = new Audio('audio/replica.mp3')
 var laser = new Audio('audio/laserSmall_000.ogg')
 var explosion = new Audio('audio/explosion-hq.mp3')
 

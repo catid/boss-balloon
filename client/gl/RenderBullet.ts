@@ -40,9 +40,18 @@ const kFS: string = `
 
         float t = (sin(u_t) + 1.0) * 0.5;
 
-        float beta = pow(abs(alpha), 3.0 + cos(u_t * 2.0) * 0.5);
+        float beta = pow(alpha, 3.0 + cos(u_t * 2.0) * 0.5);
 
-        gl_FragColor = vec4(mix(u_color, vec3(1.0, 1.0, 1.0), beta), beta*gamma);
+        vec3 flare_color = mix(u_color, vec3(0.0, 0.0, 0.0), beta);
+
+        vec3 color;
+        if (alpha > 0.90) {
+            color = u_color;
+        } else {
+            color = flare_color;
+        }
+
+        gl_FragColor = vec4(color, beta*gamma);
     }
 `;
 
