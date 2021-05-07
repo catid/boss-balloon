@@ -2,33 +2,7 @@ import { RenderContext } from "./RenderContext";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { consoleLog } from "../../netcode/netcode";
 
-const kInnerVS: string = `
-    precision highp float;
-
-    // Input from application:
-    attribute vec2 a_position;
-    uniform vec2 u_xy;
-    uniform float u_scale;
-
-    void main() {
-        vec2 p = a_position * u_scale + u_xy;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
-    }
-`;
-
-const kInnerFS: string = `
-    precision highp float;
-
-    // Input from application:
-    uniform vec3 u_color;
-
-    void main() {
-        gl_FragColor = vec4(u_color, 1.0);
-    }
-`;
-
-const kOuterVS: string = `
+const kVS: string = `
     precision highp float;
 
     // Input from application:
@@ -47,7 +21,7 @@ const kOuterVS: string = `
     }
 `;
 
-const kOuterFS: string = `
+const kFS: string = `
     precision highp float;
 
     // Input from application:
@@ -140,7 +114,7 @@ export class RenderPlayerData {
     }
 }
 
-// Render program shared between all players
+// Render program shared between all texts
 export class RenderPlayerProgram {
     // Inner program
     inner_program: WebGLProgram;

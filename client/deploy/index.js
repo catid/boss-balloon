@@ -240,6 +240,11 @@ function StartWebsocket() {
         console.error("WebSocket client disconnected");
         ws_conn = null;
 
+        // FIXME: Remove this
+        setTimeout(() => {
+            location.reload();
+        }, 3_000);
+
         setTimeout(() => {
             StartWebsocket();
         }, 1_000);
@@ -285,7 +290,7 @@ var can_use_audio = false;
 function activate() {
     if (!is_active) {
         is_active = true;
-        document.body.style.backgroundColor = "black";
+        document.body.style.backgroundColor = "#444";
         margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"));
         margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"));
         if (can_use_audio) {
@@ -297,6 +302,8 @@ function activate() {
 function deactivate() {
     if (is_active) {
         is_active = false;
+        finger_x = -1;
+        finger_y = -1;
         document.body.style.backgroundColor = "white";
         if (can_use_audio) {
             song.pause();

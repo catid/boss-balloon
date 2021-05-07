@@ -6,6 +6,7 @@ import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVert
 import { Box3 } from "../node_modules/as-3d-math/src/as/index";
 import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
 import { RenderPlayerProgram, RenderPlayerData } from "./gl/RenderPlayer";
+import { RenderStringProgram } from "./gl/RenderString";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -349,12 +350,14 @@ export function SendTimeSync(): void {
 
 let firacode_font: RenderTextProgram;
 let player_prog: RenderPlayerProgram;
+let string_prog: RenderStringProgram;
 
 export function Initialize(): void {
     new RenderContext();
 
     firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
     player_prog = new RenderPlayerProgram();
+    string_prog = new RenderStringProgram();
 }
 
 
@@ -386,7 +389,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         player_prog.DrawPlayer(
             1.0, 0.5, 0.5,
-            x, y, 0.1, t);
+            x, y, 0.05, t);
     }
 
     firacode_font.BeginRender();
@@ -406,7 +409,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
             x, y,
-            0.15/player.name_data!.width, player.name_data!);
+            0.1/player.name_data!.width, player.name_data!);
     }
 }
 
@@ -417,18 +420,47 @@ function SimulationStep(dt: f32): void {
     for (let i: i32 = 0; i < players_count; ++i) {
         const player = players[i];
 
-        player.vx += player.ax * dt;
-        player.vy += player.ay * dt;
+        // TODO: Make slower if ship is larger
 
-        const mag: f32 = f32(Math.sqrt(player.vx * player.vx + player.vy * player.vy));
-        const limit: f32 = 1.0;
-        if (mag > limit) {
-            player.vx *= limit / mag;
-            player.vy *= limit / mag;
+        const inv_mass: f32 = 1.0 / 1.0;
+
+        let ax: f32 = player.ax * inv_mass;
+        let ay: f32 = player.ay * inv_mass;
+
+        let vx = player.vx + ax * dt;
+        let vy = player.vy + ay * dt;
+
+        const friction: f32 = 0.001;
+        const vf: f32 = friction * inv_mass;
+
+        if (vx > vf) {
+            vx -= vf;
+        } else if (vx < -vf) {
+            vx += vf;
+        } else {
+            vx = 0;
         }
 
-        player.x += player.vx * dt;
-        player.y += player.vy * dt;
+        if (vy > vf) {
+            vy -= vf;
+        } else if (vy < -vf) {
+            vy += vf;
+        } else {
+            vy = 0;
+        }
+
+        const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
+        const limit: f32 = 1.0;
+        if (mag > limit) {
+            vx *= limit / mag;
+            vy *= limit / mag;
+        }
+
+        player.vx = vx;
+        player.vy = vy;
+
+        player.x += vx * dt;
+        player.y += vy * dt;
     }
 }
 
@@ -460,6 +492,8 @@ export function RenderFrame(
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = TimeConverter.MsecToTime(now_msec);
 
+    let pointer_active: bool = (finger_x >= 0 && finger_x < canvas_w && finger_y >= 0 && finger_y < canvas_w);
+
     let self: Player | null = null;
     if (SelfId != -1 && player_map.has(u8(SelfId))) {
         self = player_map.get(u8(SelfId));
@@ -468,14 +502,16 @@ export function RenderFrame(
         self.ax = 0;
         self.ay = 0;
 
-        const fcx = finger_x - canvas_w / 2;
-        const fcy = finger_y - canvas_h / 2;
-        const mag: f32 = f32(Math.sqrt(fcx * fcx + fcy * fcy));
-        if (mag > f32(canvas_w / 10)) {
-            const limit: f32 = 0.001;
-            if (mag > 0) {
-                self.ax = f32(fcx) * limit / mag;
-                self.ay = f32(fcy) * limit / mag;
+        if (pointer_active) {
+            const fcx = finger_x - canvas_w / 2;
+            const fcy = finger_y - canvas_h / 2;
+            const mag: f32 = f32(Math.sqrt(fcx * fcx + fcy * fcy));
+            if (mag > f32(canvas_w / 10)) {
+                const limit: f32 = 0.001;
+                if (mag > 0) {
+                    self.ax = f32(fcx) * limit / mag;
+                    self.ay = f32(fcy) * limit / mag;
+                }
             }
         }
     }
@@ -489,6 +525,15 @@ export function RenderFrame(
     }
 
     RenderPlayers(t, sx, sy);
+
+    if (pointer_active) {
+        string_prog.DrawPlayer(
+            1.0, 1.0, 1.0,
+            f32(finger_x) / f32(canvas_w),
+            f32(finger_y) / f32(canvas_h),
+            0.5, 0.5,
+            t);
+    }
 
     // Collect GC after render tasks are done
     __collect();
