@@ -74,7 +74,7 @@ export class RenderStringProgram {
         this.vertices_buffer = gl.createBuffer();
     }
 
-    public DrawPlayer(
+    public DrawString(
         r: f32, g: f32, b: f32,
         x0: f32, y0: f32,
         x1: f32, y1: f32,

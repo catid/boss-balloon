@@ -47,7 +47,7 @@ const kFS: string = `
 `;
 
 // Render program shared between all bombs
-export class RenderBombProgram {
+export class RenderBulletProgram {
     program: WebGLProgram;
     a_position: GLint;
     u_xy: WebGLUniformLocation;
@@ -109,7 +109,7 @@ export class RenderBombProgram {
         gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, index_data, gl.STATIC_DRAW);
     }
 
-    public DrawBomb(
+    public DrawBullet(
         foreground_r: f32, foreground_g: f32, foreground_b: f32,
         x: f32, y: f32,
         scale: f32,

@@ -7,6 +7,8 @@ import { Box3 } from "../node_modules/as-3d-math/src/as/index";
 import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
 import { RenderPlayerProgram, RenderPlayerData } from "./gl/RenderPlayer";
 import { RenderStringProgram } from "./gl/RenderString";
+import { RenderBombProgram } from "./gl/RenderBomb";
+import { RenderBulletProgram } from "./gl/RenderBullet";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -351,6 +353,8 @@ export function SendTimeSync(): void {
 let firacode_font: RenderTextProgram;
 let player_prog: RenderPlayerProgram;
 let string_prog: RenderStringProgram;
+let bomb_prog: RenderBombProgram;
+let bullet_prog: RenderBulletProgram;
 
 export function Initialize(): void {
     new RenderContext();
@@ -358,7 +362,34 @@ export function Initialize(): void {
     firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
     player_prog = new RenderPlayerProgram();
     string_prog = new RenderStringProgram();
+    bomb_prog = new RenderBombProgram();
+    bullet_prog = new RenderBulletProgram();
 }
+
+
+//------------------------------------------------------------------------------
+// Weaponry
+
+class BulletWeapon {
+    x: f32 = 0;
+    y: f32 = 0;
+    vx: f32 = 0;
+    vy: f32 = 0;
+    team: u8 = 0;
+    t: u64 = 0;
+}
+
+class BombWeapon {
+    x: f32 = 0;
+    y: f32 = 0;
+    vx: f32 = 0;
+    vy: f32 = 0;
+    team: u8 = 0;
+    t: u64 = 0;
+}
+
+let BulletList: Array<BulletWeapon> = new Array<BulletWeapon>();
+let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 
 
 //------------------------------------------------------------------------------
@@ -413,6 +444,36 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
     }
 }
 
+function RenderBullets(t: u64, sx: f32, sy: f32): void {
+    const count = BulletList.length;
+
+    for (let i: i32 = 0; i < count; ++i) {
+        const bullet = BulletList[i];
+
+        const x = ObjectToScreenX(bullet.x, sx);
+        const y = ObjectToScreenY(bullet.y, sy);
+
+        bullet_prog.DrawBullet(
+            1.0, 1.0, 0.5,
+            x, y, 0.02, t);
+    }
+}
+
+function RenderBombs(t: u64, sx: f32, sy: f32): void {
+    const count = BombList.length;
+
+    for (let i: i32 = 0; i < count; ++i) {
+        const bomb = BombList[i];
+
+        const x = ObjectToScreenX(bomb.x, sx);
+        const y = ObjectToScreenY(bomb.y, sy);
+
+        bomb_prog.DrawBomb(
+            1.0, 1.0, 0.5,
+            x, y, 0.05, t);
+    }
+}
+
 function SimulationStep(dt: f32): void {
     const players = player_map.values();
     const players_count = players.length;
@@ -452,8 +513,9 @@ function SimulationStep(dt: f32): void {
         const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
         const limit: f32 = 1.0;
         if (mag > limit) {
-            vx *= limit / mag;
-            vy *= limit / mag;
+            const norm_factor = limit / mag;
+            vx *= norm_factor;
+            vy *= norm_factor;
         }
 
         player.vx = vx;
@@ -461,6 +523,24 @@ function SimulationStep(dt: f32): void {
 
         player.x += vx * dt;
         player.y += vy * dt;
+    }
+
+    const bomb_count = BombList.length;
+
+    for (let i: i32 = 0; i < bomb_count; ++i) {
+        const bomb = BombList[i];
+
+        bomb.x += bomb.vx * dt;
+        bomb.y += bomb.vy * dt;
+    }
+
+    const bullet_count = BulletList.length;
+
+    for (let i: i32 = 0; i < bullet_count; ++i) {
+        const bullet = BulletList[i];
+
+        bullet.x += bullet.vx * dt;
+        bullet.y += bullet.vy * dt;
     }
 }
 
@@ -474,6 +554,9 @@ function Physics(dt: f32): void {
         SimulationStep(dt);
     }
 }
+
+let hack_last_bullet_fire: u64 = 0;
+let hack_bomb_counter: i32 = 0;
 
 export function RenderFrame(
     now_msec: f64,
@@ -522,12 +605,54 @@ export function RenderFrame(
     if (self != null) {
         sx = self.x;
         sy = self.y;
+
+        const weapon_dt = i64(t - hack_last_bullet_fire);
+        if (weapon_dt > 500 * 4) {
+            let vx = self.vx;
+            let vy = self.vy;
+
+            if (vx == 0.0 && vy == 0.0) {
+                vy = 1.0;
+            }
+
+            const bullet_speed: f32 = 0.5;
+
+            const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
+            const vfactor = bullet_speed / mag;
+            vx *= vfactor;
+            vy *= vfactor;
+
+            if (hack_bomb_counter == 0) {
+                const bomb = new BombWeapon;
+                bomb.vx = self.vx + vx;
+                bomb.vy = self.vy + vy;
+                bomb.x = self.x;
+                bomb.y = self.y;
+                bomb.t = t;
+                BombList.push(bomb);
+            } else {
+                const bullet = new BulletWeapon;
+                bullet.vx = self.vx + vx;
+                bullet.vy = self.vy + vy;
+                bullet.x = self.x;
+                bullet.y = self.y;
+                bullet.t = t;
+                BulletList.push(bullet);
+            }
+            hack_bomb_counter++;
+            if (hack_bomb_counter >= 4) {
+                hack_bomb_counter = 0;
+            }
+            hack_last_bullet_fire = t;
+        }
     }
 
     RenderPlayers(t, sx, sy);
+    RenderBombs(t, sx, sy);
+    RenderBullets(t, sx, sy);
 
     if (pointer_active) {
-        string_prog.DrawPlayer(
+        string_prog.DrawString(
             1.0, 1.0, 1.0,
             f32(finger_x) / f32(canvas_w),
             f32(finger_y) / f32(canvas_h),
