@@ -65,7 +65,7 @@ const kOuterFS: string = `
 
         float alpha = clamp(x * 0.8 - y, 0.0, 1.0);
 
-        gl_FragColor = vec4(vec3(0,0,0), 1.0 - alpha);
+        gl_FragColor = vec4(u_color, 1.0 - alpha);
     }
 `;
 
@@ -258,7 +258,8 @@ export class RenderPlayerProgram {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.outer_indices_buffer);
 
-        gl.uniform3f(this.outer_u_color, foreground_r, foreground_g, foreground_b);
+        //gl.uniform3f(this.outer_u_color, foreground_r, foreground_g, foreground_b);
+        gl.uniform3f(this.outer_u_color, 0.0, 0.0, 0.0);
 
         gl.uniform2f(this.outer_u_xy, x, y);
         gl.uniform1f(this.outer_u_scale, scale);

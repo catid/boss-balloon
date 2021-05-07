@@ -398,8 +398,6 @@ let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 //------------------------------------------------------------------------------
 // Render
 
-let render_last_msec: f64 = 0;
-
 function ObjectToScreenX(x: f32, sx: f32): f32 {
     return (x - sx) * 0.001 + 0.5;
 }
@@ -442,7 +440,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
-            x, y + 0.02,
+            x, y + 0.03,
             0.16/player.name_data!.width, player.name_data!);
     }
 }
@@ -547,14 +545,21 @@ function SimulationStep(dt: f32): void {
     }
 }
 
-function Physics(dt: f32): void {
-    while (dt >= 10.0) {
-        SimulationStep(10.0);
-        dt -= 10.0;
+let last_t: u64 = 0;
+
+function Physics(t: u64): void {
+    let dt: i32 = i32(t - last_t);
+    last_t = t;
+
+    const step: i32 = 40;
+
+    while (dt >= step) {
+        SimulationStep(f32(step) * 0.25);
+        dt -= step;
     }
 
     if (dt > 0) {
-        SimulationStep(dt);
+        SimulationStep(f32(dt) * 0.25);
     }
 }
 
@@ -566,12 +571,6 @@ export function RenderFrame(
     finger_x: i32, finger_y: i32,
     canvas_w: i32, canvas_h: i32): void
 {
-    let dt: f64 = now_msec - render_last_msec;
-    if (dt > 5000) {
-        dt = 0;
-    }
-    render_last_msec = now_msec;
-
     RenderContext.I.UpdateViewport(canvas_w, canvas_h);
     RenderContext.I.Clear();
 
@@ -602,7 +601,7 @@ export function RenderFrame(
         }
     }
 
-    Physics(f32(dt));
+    Physics(t);
 
     let sx: f32 = 0, sy: f32 = 0;
     if (self != null) {
@@ -640,6 +639,25 @@ export function RenderFrame(
                     bullet.t = t;
                     BulletList.push(bullet);
                 }
+
+                if (hack_bomb_counter == 0) {
+                    const bomb = new BombWeapon;
+                    bomb.vx = self.vx - vx;
+                    bomb.vy = self.vy - vy;
+                    bomb.x = self.x;
+                    bomb.y = self.y;
+                    bomb.t = t;
+                    BombList.push(bomb);
+                } else {
+                    const bullet = new BulletWeapon;
+                    bullet.vx = self.vx - vx;
+                    bullet.vy = self.vy - vy;
+                    bullet.x = self.x;
+                    bullet.y = self.y;
+                    bullet.t = t;
+                    BulletList.push(bullet);
+                }
+
                 hack_bomb_counter++;
                 if (hack_bomb_counter >= 4) {
                     hack_bomb_counter = 0;
