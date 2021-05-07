@@ -420,7 +420,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         player_prog.DrawPlayer(
             1.0, 0.5, 0.5,
-            x, y, 0.05, t);
+            x, y, 0.02, t);
     }
 
     firacode_font.BeginRender();
@@ -439,7 +439,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
-            x, y,
+            x, y + 0.02,
             0.1/player.name_data!.width, player.name_data!);
     }
 }
