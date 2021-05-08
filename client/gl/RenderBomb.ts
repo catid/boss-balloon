@@ -15,7 +15,7 @@ const kVS: string = `
     varying vec2 v_pos;
 
     void main() {
-        v_pos = a_position;
+        v_pos = a_position * 8.0;
         vec2 p = a_position * u_scale + u_xy;
         // Normalized upper left (0,0) lower right (1,1)
         gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
@@ -33,26 +33,28 @@ const kFS: string = `
     varying vec2 v_pos;
 
     void main() {
-        // Radius of circle is always 1, so dist2 = 1 on the border
-        float x = 1.0 - abs(v_pos.x);
-        float y = 1.0 - abs(v_pos.y);
-        float alpha = clamp((x * x + y * y) * 0.5, 0.0, 1.0);
-        float gamma = 1.0 - (v_pos.x * v_pos.x + v_pos.y * v_pos.y);
-
-        float t = (sin(u_t) + 1.0) * 0.5;
-
-        float beta = pow(alpha, 3.0 + cos(u_t * 2.0) * 0.5);
-
-        vec3 flare_color = mix(u_color, vec3(0.0, 0.0, 0.0), beta);
-
-        vec3 color;
-        if (alpha > 0.90) {
-            color = u_color;
-        } else {
-            color = flare_color;
-        }
-
-        gl_FragColor = vec4(color, beta*gamma);
+        float d = length(v_pos);
+        float f = 0.;
+        float phase = u_t;
+        float dir = 1.;
+        float a = 0.;
+        float len = -d*(cos(u_t)*.2+.2);
+        for(float i = 0.; i<10.0; i+=1.){
+            float p = phase +(sin(i+u_t)-1.)*.05+len;
+            a = dot(normalize(v_pos), normalize(vec2(cos((p)*dir), sin((p)*dir))));
+            a = max(0., a);
+            a = pow(a, 10.);
+            dir*=-1.;
+            phase+=mod(i,6.28);
+            f += a;
+            f = abs(mod(f+1., 2.)-1.);
+        }    
+        f+=1.7-d*(.7+sin(u_t+dot(normalize(v_pos), vec2(1., 0.))*12.)*.02);
+        f = max(f, 0.);
+        vec3 c = mix( vec3(0.5, 0., 0.), u_color, f);
+        c = clamp(c, 0., 1.);
+        c = 1.0-vec3(1.0, .8, .6)*3.*(1.0-c);
+        gl_FragColor = vec4(c,f);
     }
 `;
 
@@ -138,7 +140,7 @@ export class RenderBombProgram {
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
-        gl.uniform1f(this.u_t, f32(t/4 % 1024) * 4.0 * f32(Math.PI) / 1024.0);
+        gl.uniform1f(this.u_t, f32(t/40 % 1000000) * 0.01);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }

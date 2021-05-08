@@ -16,8 +16,8 @@ import { RenderColor } from "./gl/RenderCommon";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
-declare function playExplosion(): void;
-declare function playLaser(): void;
+declare function playSFX(name: string): void;
+declare function playMusic(name: string): void;
 declare function serverLoginGood(): void;
 declare function serverLoginBad(reason: string): void;
 
@@ -37,7 +37,7 @@ const kMaxTeams: i32 = 5;
 
 const kTeamColors = [
     new RenderColor(0.8, 0.4, 0.2), // red
-    new RenderColor(0.2, 0.8, 0.2), // green
+    new RenderColor(0.2, 1.0, 0.2), // green
     new RenderColor(0.2, 0.4, 0.8), // blue
     new RenderColor(0.8, 0.3, 0.8), // purple
     new RenderColor(0.8, 0.8, 0.5)  // pink
@@ -45,7 +45,7 @@ const kTeamColors = [
 
 const kTeamTextColors = [
     new RenderColor(1.0, 0.4, 0.2), // red
-    new RenderColor(0.2, 1.0, 0.2), // green
+    new RenderColor(0.6, 1.0, 0.6), // green
     new RenderColor(0.2, 0.4, 1.0), // blue
     new RenderColor(1.0, 0.3, 1.0), // purple
     new RenderColor(1.0, 1.0, 0.5)  // pink
@@ -139,6 +139,8 @@ class Player {
 };
 
 let player_map = new Map<u8, Player>();
+let player_list: Player[]; // temp
+let temp_self: Player | null;
 
 function OnPlayerKilled(killer: Player, killee: Player): void {
 
@@ -146,6 +148,77 @@ function OnPlayerKilled(killer: Player, killee: Player): void {
 
 function OnChat(player: Player, m: string): void {
     consoleLog("Chat: " + m.toString());
+}
+
+
+//------------------------------------------------------------------------------
+// Music
+
+let last_music_change: u64 = 0;
+let active_music: string = "chill";
+let next_music: string = "";
+let next_music_ts: u64 = 0;
+
+function UpdateMusic(t: u64, sx: f32, sy: f32): void {
+    if (temp_self == null) {
+        return;
+    }
+
+    // Do not change music faster than 10 seconds.
+    const dt: i64 = i64(t - last_music_change);
+    if (dt < 10_000 * 4) {
+        return;
+    }
+
+    let enemy_near: bool = false;
+    let highest_size: i32 = 0;
+
+    const players_count = player_list.length;
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = player_list[i];
+
+        if (player.team == temp_self!.team) {
+            continue;
+        }
+
+        // Wide radius around screen
+        if (ObjectOnScreen(player.temp_screen_x, player.temp_screen_y, 0.5)) {
+            enemy_near = true;
+            if (highest_size < i32(player.size)) {
+                highest_size = i32(player.size);
+            }
+        }
+    }
+
+    let music: string = "chill";
+
+    if (enemy_near) {
+        const diff: i32 = i32(temp_self!.size) - highest_size;
+        if (diff > 3) {
+            music = "fight2";
+        } else {
+            music = "fight1";
+        }
+    }
+
+    // Require new music to be consistent for at least 5 seconds before changing.
+    if (next_music != music) {
+        next_music_ts = t;
+        next_music = music;
+        return;
+    }
+
+    const next_dt: i64 = i64(t - next_music_ts);
+    if (next_dt < 5_000 * 4) {
+        return;
+    }
+
+    if (active_music != next_music) {
+        active_music = next_music;
+        last_music_change = t;
+        playMusic(active_music);
+        next_music = "";
+    }
 }
 
 
@@ -458,15 +531,14 @@ function ObjectOnScreen(x: f32, y: f32, r: f32): bool {
 }
 
 function RenderPlayers(t: u64, sx: f32, sy: f32): void {
-    const players = player_map.values();
-    const players_count = players.length;
+    const players_count = player_list.length;
 
     if (players_count == 0) {
         return;
     }
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = players[i];
+        const player = player_list[i];
 
         const x = ObjectToScreenX(player.x, sx);
         const y = ObjectToScreenY(player.y, sy);
@@ -495,7 +567,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
     firacode_font.BeginRender();
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = players[i];
+        const player = player_list[i];
 
         if (player.name_data == null || !player.on_screen) {
             continue;
@@ -519,6 +591,10 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
         const x = ObjectToScreenX(bullet.x, sx);
         const y = ObjectToScreenY(bullet.y, sy);
 
+        if (!ObjectOnScreen(x, y, 0.02)) {
+            continue;
+        }
+
         bullet_prog.DrawBullet(
             kTeamColors[bullet.team],
             x, y, 0.02, t);
@@ -534,26 +610,25 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
         const x = ObjectToScreenX(bomb.x, sx);
         const y = ObjectToScreenY(bomb.y, sy);
 
-        if (ObjectOnScreen(x, y, 0.1)) {
+        if (!ObjectOnScreen(x, y, 0.1)) {
             continue;
         }
 
         bomb_prog.DrawBomb(
             kTeamColors[bomb.team],
-            x, y, 0.02, t);
+            x, y, 0.05, t);
     }
 }
 
 function RenderArrows(t: u64, sx: f32, sy: f32): void {
-    const players = player_map.values();
-    const players_count = players.length;
+    const players_count = player_list.length;
 
     if (players_count == 0) {
         return;
     }
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = players[i];
+        const player = player_list[i];
 
         if (player.on_screen || player.is_self) {
             continue;
@@ -610,11 +685,10 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
 }
 
 function SimulationStep(dt: f32, t: u64): void {
-    const players = player_map.values();
-    const players_count = players.length;
+    const players_count = player_list.length;
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = players[i];
+        const player = player_list[i];
 
         // TODO: Make slower if ship is larger
 
@@ -719,13 +793,15 @@ export function RenderFrame(
 
     let pointer_active: bool = (finger_x >= 0 && finger_x < canvas_w && finger_y >= 0 && finger_y < canvas_w);
 
-    let self: Player | null = null;
+    player_list = player_map.values();
+
+    temp_self = null;
     if (SelfId != -1 && player_map.has(u8(SelfId))) {
-        self = player_map.get(u8(SelfId));
+        temp_self = player_map.get(u8(SelfId));
     }
-    if (self != null) {
-        self.ax = 0;
-        self.ay = 0;
+    if (temp_self != null) {
+        temp_self!.ax = 0;
+        temp_self!.ay = 0;
 
         if (pointer_active) {
             const fcx = finger_x - canvas_w / 2;
@@ -734,26 +810,26 @@ export function RenderFrame(
             if (mag > f32(canvas_w / 10)) {
                 const limit: f32 = 0.001;
                 if (mag > 0) {
-                    self.ax = f32(fcx) * limit / mag;
-                    self.ay = f32(fcy) * limit / mag;
+                    temp_self!.ax = f32(fcx) * limit / mag;
+                    temp_self!.ay = f32(fcy) * limit / mag;
                 }
             }
         }
 
-        self.is_self = true;
+        temp_self!.is_self = true;
     }
 
     Physics(t);
 
     let sx: f32 = 0, sy: f32 = 0;
-    if (self != null) {
-        sx = self.x;
-        sy = self.y;
+    if (temp_self != null) {
+        sx = temp_self!.x;
+        sy = temp_self!.y;
 
         const weapon_dt = i64(t - hack_last_bullet_fire);
         if (weapon_dt > 500 * 4) {
-            let vx = self.vx;
-            let vy = self.vy;
+            let vx = temp_self!.vx;
+            let vy = temp_self!.vy;
 
             if (vx == 0.0 && vy == 0.0) {
             } else {
@@ -766,37 +842,21 @@ export function RenderFrame(
     
                 if (hack_bomb_counter == 0) {
                     const bomb = new BombWeapon;
-                    bomb.vx = self.vx + vx;
-                    bomb.vy = self.vy + vy;
-                    bomb.x = self.x;
-                    bomb.y = self.y;
+                    bomb.vx = temp_self!.vx + vx;
+                    bomb.vy = temp_self!.vy + vy;
+                    bomb.x = temp_self!.x;
+                    bomb.y = temp_self!.y;
                     bomb.t = t;
+                    bomb.team = temp_self!.team;
                     BombList.push(bomb);
                 } else {
                     const bullet = new BulletWeapon;
-                    bullet.vx = self.vx + vx;
-                    bullet.vy = self.vy + vy;
-                    bullet.x = self.x;
-                    bullet.y = self.y;
+                    bullet.vx = temp_self!.vx + vx;
+                    bullet.vy = temp_self!.vy + vy;
+                    bullet.x = temp_self!.x;
+                    bullet.y = temp_self!.y;
                     bullet.t = t;
-                    BulletList.push(bullet);
-                }
-
-                if (hack_bomb_counter == 0) {
-                    const bomb = new BombWeapon;
-                    bomb.vx = self.vx - vx;
-                    bomb.vy = self.vy - vy;
-                    bomb.x = self.x;
-                    bomb.y = self.y;
-                    bomb.t = t;
-                    BombList.push(bomb);
-                } else {
-                    const bullet = new BulletWeapon;
-                    bullet.vx = self.vx - vx;
-                    bullet.vy = self.vy - vy;
-                    bullet.x = self.x;
-                    bullet.y = self.y;
-                    bullet.t = t;
+                    bullet.team = temp_self!.team;
                     BulletList.push(bullet);
                 }
 
@@ -834,9 +894,13 @@ export function RenderFrame(
             t);
     }
 
-    if (self != null) {
-        self.is_self = false;
+    RenderContext.I.Flush();
+
+    if (temp_self != null) {
+        temp_self!.is_self = false;
     }
+
+    UpdateMusic(t, sx, sy);
 
     // Collect GC after render tasks are done
     __collect();

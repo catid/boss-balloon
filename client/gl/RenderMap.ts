@@ -224,7 +224,7 @@ export class RenderMapProgram {
 
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
-        gl.uniform1f(this.u_t, f32(t % 1000000) / 1000000.0);
+        gl.uniform1f(this.u_t, f32(t % 1000000) / 10000000.0);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
      }

@@ -13,9 +13,23 @@ var cnvs = document.getElementById("cnvs");
 //------------------------------------------------------------------------------
 // Audio
 
-var song = new Audio('audio/replica.mp3')
-var laser = new Audio('audio/laserSmall_000.ogg')
-var explosion = new Audio('audio/explosion-hq.mp3')
+var chill_song = new Audio('audio/replica.mp3')
+var fight1_song = new Audio('audio/deadly_slot_game.mp3')
+var fight2_song = new Audio('audio/aesir_chaos.mp3')
+var laser_sfx = new Audio('audio/laserSmall_000.ogg')
+var explosion_sfx = new Audio('audio/explosion-hq.mp3')
+
+var ActiveMusic = "chill";
+var MusicMap = {
+    "chill": chill_song,
+    "fight1": fight1_song,
+    "fight2": fight2_song
+};
+
+var SoundEffects = {
+    "laser": laser_sfx,
+    "explosion": explosion_sfx
+};
 
 
 //------------------------------------------------------------------------------
@@ -294,7 +308,8 @@ function activate() {
         margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"));
         margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"));
         if (can_use_audio) {
-            song.play();
+            MusicMap[ActiveMusic].play();
+            MusicMap[ActiveMusic].loop = true;
         }
     }
 }
@@ -306,7 +321,7 @@ function deactivate() {
         finger_y = -1;
         document.body.style.backgroundColor = "white";
         if (can_use_audio) {
-            song.pause();
+            MusicMap[ActiveMusic].pause();
         }
     }
 }
@@ -361,8 +376,8 @@ cnvs.addEventListener('mouseout', function(e) {
 document.addEventListener('mousedown', () => {
     if (!can_use_audio) {
         can_use_audio = true;
-        song.play();
-        song.loop = true;
+        MusicMap[ActiveMusic].play();
+        MusicMap[ActiveMusic].loop = true;
     }
 }, { passive: true });
 
@@ -432,19 +447,49 @@ const wasmImports = {
                 webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
             }
         },
-        playExplosion: () => {
+        playMusic: (name) => {
+            var copy = wasmExports.__getString(name);
             setTimeout(() => {
+                if (ActiveMusic != copy) {
+                    var old_music = ActiveMusic;
+                    var anim_out_fn = () => {
+                        var new_volume = MusicMap[old_music].volume - 0.1;
+                        if (new_volume <= 0.0) {
+                            MusicMap[old_music].pause();
+                        } else {
+                            MusicMap[old_music].volume = new_volume;
+                            setTimeout(anim_out_fn, 100);
+                        }
+                    };
+                    anim_out_fn();
+                }
+                ActiveMusic = copy;
                 if (can_use_audio) {
-                    explosion.pause();
-                    explosion.play();
+                    var new_music = ActiveMusic;
+                    MusicMap[new_music].volume = 0.1;
+                    if (is_active) {
+                        MusicMap[new_music].play();
+                    }
+                    var anim_in_fn = () => {
+                        var new_volume = MusicMap[new_music].volume + 0.1;
+                        if (new_volume < 1.0) {
+                            MusicMap[new_music].volume = new_volume;
+                            setTimeout(anim_in_fn, 100);
+                        } else {
+                            MusicMap[new_music].volume = 1.0;
+                        }
+                    };
+                    anim_in_fn();
+                    MusicMap[ActiveMusic].loop = true;
                 }
             }, 0);
         },
-        playLaser: () => {
+        playSFX: (name) => {
+            var copy = wasmExports.__getString(name);
             setTimeout(() => {
                 if (can_use_audio) {
-                    laser.pause();
-                    laser.play();
+                    SoundEffects[copy].pause();
+                    SoundEffects[copy].play();
                 }
             }, 0);
         },
