@@ -31,7 +31,7 @@ let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
 //------------------------------------------------------------------------------
 // Constants
 
-const kMapWidth: f32 = 32000.0;
+const kMapWidth: f32 = 30000.0;
 
 const kMaxTeams: i32 = 5;
 
@@ -182,7 +182,7 @@ function UpdateMusic(t: u64, sx: f32, sy: f32): void {
         }
 
         // Wide radius around screen
-        if (ObjectOnScreen(player.temp_screen_x, player.temp_screen_y, 0.5)) {
+        if (IsObjectOnScreen(player.temp_screen_x, player.temp_screen_y, 0.5)) {
             enemy_near = true;
             if (highest_size < i32(player.size)) {
                 highest_size = i32(player.size);
@@ -520,13 +520,19 @@ let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 //------------------------------------------------------------------------------
 // Render
 
-function ObjectToScreenX(x: f32, sx: f32): f32 {
-    return (x - sx) * 0.001 + 0.5;
+function ObjectToScreen(x: f32, sx: f32): f32 {
+    let d = x - sx;
+    if (abs(d) > kMapWidth * 0.5) {
+        if (d > 0.0) {
+            d -= kMapWidth;
+        } else {
+            d += kMapWidth;
+        }
+    }
+    return d * 0.001 + 0.5;
 }
-function ObjectToScreenY(y: f32, sy: f32): f32 {
-    return (y - sy) * 0.001 + 0.5;
-}
-function ObjectOnScreen(x: f32, y: f32, r: f32): bool {
+
+function IsObjectOnScreen(x: f32, y: f32, r: f32): bool {
     return x >= -r && x <= 1.0 + r && y >= -r && y <= 1.0 + r;
 }
 
@@ -540,21 +546,27 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
     for (let i: i32 = 0; i < players_count; ++i) {
         const player = player_list[i];
 
-        const x = ObjectToScreenX(player.x, sx);
-        const y = ObjectToScreenY(player.y, sy);
+        const x = ObjectToScreen(player.x, sx);
+        const y = ObjectToScreen(player.y, sy);
 
         player.temp_screen_x = x;
         player.temp_screen_y = y;
-        player.on_screen = ObjectOnScreen(x, y, 0.1);
+        player.on_screen = IsObjectOnScreen(x, y, 0.1);
 
         if (!player.on_screen) {
             continue;
         }
 
-        const sun_x: f32 = ObjectToScreenX(player.x, 0.0);
-        const sun_y: f32 = ObjectToScreenY(player.y, 0.0);
+        let sun_x: f32 = player.x;
+        if (sun_x > kMapWidth * 0.5) {
+            sun_x -= kMapWidth;
+        }
+        let sun_y: f32 = player.y;
+        if (sun_y > kMapWidth * 0.5) {
+            sun_y -= kMapWidth;
+        }
         const shine_angle: f32 = f32(Math.atan2(sun_y, sun_x));
-        const shine_max: f32 = 50.0;
+        const shine_max: f32 = 10000.0;
         const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
 
         player_prog.DrawPlayer(
@@ -588,10 +600,10 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
     for (let i: i32 = 0; i < count; ++i) {
         const bullet = BulletList[i];
 
-        const x = ObjectToScreenX(bullet.x, sx);
-        const y = ObjectToScreenY(bullet.y, sy);
+        const x = ObjectToScreen(bullet.x, sx);
+        const y = ObjectToScreen(bullet.y, sy);
 
-        if (!ObjectOnScreen(x, y, 0.02)) {
+        if (!IsObjectOnScreen(x, y, 0.02)) {
             continue;
         }
 
@@ -607,10 +619,10 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
     for (let i: i32 = 0; i < count; ++i) {
         const bomb = BombList[i];
 
-        const x = ObjectToScreenX(bomb.x, sx);
-        const y = ObjectToScreenY(bomb.y, sy);
+        const x = ObjectToScreen(bomb.x, sx);
+        const y = ObjectToScreen(bomb.y, sy);
 
-        if (!ObjectOnScreen(x, y, 0.1)) {
+        if (!IsObjectOnScreen(x, y, 0.1)) {
             continue;
         }
 
@@ -728,6 +740,17 @@ function SimulationStep(dt: f32, t: u64): void {
 
             player.x += vx * dt;
             player.y += vy * dt;
+
+            if (player.x >= kMapWidth) {
+                player.x -= kMapWidth;
+            } else if (player.x < 0.0) {
+                player.x += kMapWidth;
+            }
+            if (player.y >= kMapWidth) {
+                player.y -= kMapWidth;
+            } else if (player.y < 0.0) {
+                player.y += kMapWidth;
+            }
         }
     }
 
@@ -736,6 +759,17 @@ function SimulationStep(dt: f32, t: u64): void {
 
         bomb.x += bomb.vx * dt;
         bomb.y += bomb.vy * dt;
+
+        if (bomb.x >= kMapWidth) {
+            bomb.x -= kMapWidth;
+        } else if (bomb.x < 0.0) {
+            bomb.x += kMapWidth;
+        }
+        if (bomb.y >= kMapWidth) {
+            bomb.y -= kMapWidth;
+        } else if (bomb.y < 0.0) {
+            bomb.y += kMapWidth;
+        }
 
         if (i32(t - bomb.t) > 10_000 * 4) {
             BombList[i] = BombList[BombList.length - 1];
@@ -749,6 +783,17 @@ function SimulationStep(dt: f32, t: u64): void {
 
         bullet.x += bullet.vx * dt;
         bullet.y += bullet.vy * dt;
+
+        if (bullet.x >= kMapWidth) {
+            bullet.x -= kMapWidth;
+        } else if (bullet.x < 0.0) {
+            bullet.x += kMapWidth;
+        }
+        if (bullet.y >= kMapWidth) {
+            bullet.y -= kMapWidth;
+        } else if (bullet.y < 0.0) {
+            bullet.y += kMapWidth;
+        }
 
         if (i32(t - bullet.t) > 10_000 * 4) {
             BulletList[i] = BulletList[BulletList.length - 1];
@@ -870,17 +915,17 @@ export function RenderFrame(
         }
     }
 
-    map_prog.DrawMap(sx/1000.0, sy/1000.0, 1.0, t);
+    const origin_x = ObjectToScreen(0.0, sx);
+    const origin_y = ObjectToScreen(0.0, sy);
+    map_prog.DrawMap(origin_x/1000.0, origin_y/1000.0, 1.0, t);
 
     RenderPlayers(t, sx, sy);
     RenderBombs(t, sx, sy);
     RenderBullets(t, sx, sy);
 
     const sun_radius: f32 = 0.5;
-    const sun_x = ObjectToScreenX(0.0, sx) - sun_radius;
-    const sun_y = ObjectToScreenY(0.0, sy) - sun_radius;
-    if (ObjectOnScreen(sun_x, sun_y, sun_radius)) {
-        sun_prog.DrawSun(sun_x, sun_y, sun_radius, t);
+    if (IsObjectOnScreen(origin_x, origin_y, sun_radius)) {
+        sun_prog.DrawSun(origin_x, origin_y, sun_radius, t);
     }
 
     RenderArrows(t, sx, sy);
