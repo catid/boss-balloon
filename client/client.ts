@@ -788,7 +788,6 @@ export function RenderFrame(
     RenderPlayers(t, sx, sy);
     RenderBombs(t, sx, sy);
     RenderBullets(t, sx, sy);
-    RenderArrows(t, sx, sy);
 
     const sun_radius: f32 = 0.5;
     const sun_x = ObjectToScreenX(0.0, sx) - sun_radius;
@@ -796,6 +795,8 @@ export function RenderFrame(
     if (ObjectOnScreen(sun_x, sun_y, sun_radius)) {
         sun_prog.DrawSun(sun_x, sun_y, sun_radius, t);
     }
+
+    RenderArrows(t, sx, sy);
 
     if (pointer_active) {
         string_prog.DrawString(
