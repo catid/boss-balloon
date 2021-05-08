@@ -917,7 +917,7 @@ export function RenderFrame(
 
     const origin_x = ObjectToScreen(0.0, sx);
     const origin_y = ObjectToScreen(0.0, sy);
-    map_prog.DrawMap(origin_x/1000.0, origin_y/1000.0, 1.0, t);
+    map_prog.DrawMap(-origin_x, -origin_y, 1.0, t);
 
     RenderPlayers(t, sx, sy);
     RenderBombs(t, sx, sy);
