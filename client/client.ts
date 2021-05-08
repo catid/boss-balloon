@@ -11,6 +11,7 @@ import { RenderBombProgram } from "./gl/RenderBomb";
 import { RenderBulletProgram } from "./gl/RenderBullet";
 import { RenderMapProgram } from "./gl/RenderMap";
 import { RenderArrowProgram } from "./gl/RenderArrow";
+import { RenderSunProgram } from "./gl/RenderSun";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -24,6 +25,16 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
+
+const kMapWidth: f32 = 32000.0;
+
+
+//------------------------------------------------------------------------------
+// Tools
+
+function clamp(x: f32, maxval: f32, minval: f32): f32 {
+    return max(maxval, min(minval, x));
+}
 
 
 //------------------------------------------------------------------------------
@@ -365,6 +376,7 @@ let bomb_prog: RenderBombProgram;
 let bullet_prog: RenderBulletProgram;
 let map_prog: RenderMapProgram;
 let arrow_prog: RenderArrowProgram;
+let sun_prog: RenderSunProgram;
 
 export function Initialize(): void {
     new RenderContext();
@@ -376,6 +388,7 @@ export function Initialize(): void {
     bullet_prog = new RenderBulletProgram();
     map_prog = new RenderMapProgram();
     arrow_prog = new RenderArrowProgram();
+    sun_prog = new RenderSunProgram();
 }
 
 
@@ -439,9 +452,15 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
             continue;
         }
 
+        const sun_x: f32 = ObjectToScreenX(player.x, 0.0);
+        const sun_y: f32 = ObjectToScreenY(player.y, 0.0);
+        const shine_angle: f32 = f32(Math.atan2(sun_y, sun_x));
+        const shine_max: f32 = 50.0;
+        const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
+
         player_prog.DrawPlayer(
             0.8, 0.2, 0.2,
-            x, y, 0.02, t);
+            x, y, 0.02, shine_angle, shine_dist, t);
 
         string_prog.DrawString(1.0, 0.4, 0.4, x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
     }
@@ -498,10 +517,6 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
     }
 }
 
-function clamp(x: f32, maxval: f32, minval: f32): f32 {
-    return max(maxval, min(minval, x));
-}
-
 function RenderArrows(t: u64, sx: f32, sy: f32): void {
     const players = player_map.values();
     const players_count = players.length;
@@ -524,28 +539,28 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
         const scale_max: f32 = 0.02;
         const scale: f32 = scale_min + clamp(scale_max - dist * 0.000003, 0.0, scale_max - scale_min);
 
-        const angle: f32 = f32(Math.atan2(x, y));
+        const angle: f32 = f32(Math.atan2(y, x));
         const edge_offset: f32 = 0.02;
 
         if (x > y) {
             if (x > -y) {
                 // right
                 x = 1.0;
-                y = 0.5 * f32(Math.tan(Math.PI * 0.5 - angle)) + 0.5;
+                y = 0.5 * f32(Math.tan(angle)) + 0.5;
             } else {
                 // top
-                x = 0.5 * f32(Math.tan(Math.PI - angle)) + 0.5;
+                x = 0.5 * f32(Math.tan(angle - Math.PI * 0.5)) + 0.5;
                 y = 0.0;
             }
         } else {
             if (x > -y) {
                 // bottom
-                x = 0.5 * f32(Math.tan(angle)) + 0.5;
+                x = -0.5 * f32(Math.tan(angle + Math.PI * 0.5)) + 0.5;
                 y = 1.0;
             } else {
                 // left
                 x = 0.0;
-                y = 0.5 * f32(Math.tan(angle + Math.PI * 0.5)) + 0.5;
+                y = -0.5 * f32(Math.tan(angle)) + 0.5;
             }
         }
 
@@ -774,6 +789,13 @@ export function RenderFrame(
     RenderBombs(t, sx, sy);
     RenderBullets(t, sx, sy);
     RenderArrows(t, sx, sy);
+
+    const sun_radius: f32 = 0.5;
+    const sun_x = ObjectToScreenX(0.0, sx) - sun_radius;
+    const sun_y = ObjectToScreenY(0.0, sy) - sun_radius;
+    if (ObjectOnScreen(sun_x, sun_y, sun_radius)) {
+        sun_prog.DrawSun(sun_x, sun_y, sun_radius, t);
+    }
 
     if (pointer_active) {
         string_prog.DrawString(

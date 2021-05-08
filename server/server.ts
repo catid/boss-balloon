@@ -12,6 +12,8 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 let Clients = new Map<i32, ConnectedClient>();
 
+const kMaxTeams: i32 = 5;
+
 
 //------------------------------------------------------------------------------
 // PlayerIdAssigner
@@ -86,6 +88,33 @@ export class ConnectedClient {
     }
 };
 
+function ChooseNewPlayerTeam(): u8 {
+    const counts: Array<i32> = new Array<i32>(kMaxTeams);
+
+    let clients = Clients.values();
+    for (let i: i32 = 0; i < clients.length; ++i) {
+        const team: i32 = i32(clients[i].team);
+
+        if (team >= 0 && team < kMaxTeams) {
+            counts[team]++;
+        }
+    }
+
+    let min_count: i32 = counts[0];
+    let best_team: u8 = 0;
+
+    for (let i: i32 = 1; i < kMaxTeams; ++i) {
+        const count: i32 = counts[i];
+
+        if (count < min_count) {
+            best_team = u8(i);
+            min_count = count;
+        }
+    }
+
+    return best_team;
+}
+
 export function OnConnectionOpen(id: i32): ConnectedClient | null {
     if (IdAssigner.IsFull()) {
         consoleLog("Server full - Connection denied");
@@ -100,6 +129,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     client.player_id = IdAssigner.Acquire();
     client.name = "Player " + client.player_id.toString();
     client.score = 100;
+    client.team = ChooseNewPlayerTeam();
 
     SendTimeSync(client, now_msec);
 

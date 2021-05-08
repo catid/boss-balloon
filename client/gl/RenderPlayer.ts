@@ -26,15 +26,17 @@ const kInnerFS: string = `
 
     // Input from application:
     uniform vec3 u_color;
+    uniform float u_shine_angle;
+    uniform float u_shine_dist;
 
     // Input from vertex shader:
     varying vec2 v_pos;
 
     void main() {
         // Radius of circle is always 1, so dist2 = 1 on the border
-        float alpha = (sin(atan(v_pos.y, v_pos.x) + 3.14159*0.2) + 1.0) * 0.5;
+        float alpha = (sin(atan(v_pos.y, v_pos.x) - u_shine_angle - 3.14159 * 0.5) + 1.0) * 0.5;
 
-        gl_FragColor = vec4(mix(u_color, vec3(1.0, 1.0, 1.0), alpha*alpha), 1.0);
+        gl_FragColor = vec4(mix(u_color, vec3(1.0, 1.0, 1.0), alpha*alpha * u_shine_dist), 1.0);
     }
 `;
 
@@ -158,6 +160,8 @@ export class RenderPlayerProgram {
     inner_u_xy: WebGLUniformLocation;
     inner_u_scale: WebGLUniformLocation;
     inner_u_color: WebGLUniformLocation;
+    inner_u_shine_angle: WebGLUniformLocation;
+    inner_u_shine_dist: WebGLUniformLocation;
 
     // Outer program
     outer_program: WebGLProgram;
@@ -198,6 +202,8 @@ export class RenderPlayerProgram {
         this.inner_u_xy = gl.getUniformLocation(this.inner_program, "u_xy");
         this.inner_u_scale = gl.getUniformLocation(this.inner_program, "u_scale");
         this.inner_u_color = gl.getUniformLocation(this.inner_program, "u_color");
+        this.inner_u_shine_angle = gl.getUniformLocation(this.inner_program, "u_shine_angle");
+        this.inner_u_shine_dist = gl.getUniformLocation(this.inner_program, "u_shine_dist");
 
         const outer_vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(outer_vs, kOuterVS);
@@ -230,6 +236,7 @@ export class RenderPlayerProgram {
         foreground_r: f32, foreground_g: f32, foreground_b: f32,
         x: f32, y: f32,
         scale: f32,
+        shine_angle: f32, shine_dist: f32,
         t: u64): void {
         const gl = RenderContext.I.gl;
 
@@ -251,6 +258,8 @@ export class RenderPlayerProgram {
 
         gl.uniform2f(this.inner_u_xy, x, y);
         gl.uniform1f(this.inner_u_scale, scale);
+        gl.uniform1f(this.inner_u_shine_angle, shine_angle);
+        gl.uniform1f(this.inner_u_shine_dist, shine_dist);
 
         // Use DYNAMIC_DRAW because we want to change this for each line we render
         gl.bufferData<f32>(gl.ARRAY_BUFFER, data.vertices, gl.DYNAMIC_DRAW);
