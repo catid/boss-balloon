@@ -1,7 +1,7 @@
 import { RenderContext } from "./RenderContext";
 import { ImageData, WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint, WebGLTexture } from "./WebGL";
-import { JSON } from "assemblyscript-json";
 import { consoleLog } from "../../netcode/netcode";
+import { RenderColor } from "./RenderCommon";
 
 const kVertexShaderCode: string = `
     precision highp float;
@@ -325,16 +325,16 @@ export class RenderTextProgram {
     }
 
     public SetColor(
-        foreground_r: f32, foreground_g: f32, foreground_b: f32,
-        stroke_r: f32, stroke_g: f32, stroke_b: f32): void {
+        color: RenderColor,
+        stroke: RenderColor): void {
         if (!this.texture_ready) {
             return;
         }
 
         const gl = RenderContext.I.gl;
 
-        gl.uniform3f(this.u_foreground_color, foreground_r, foreground_g, foreground_b);
-        gl.uniform3f(this.u_stroke_color, stroke_r, stroke_g, stroke_b);
+        gl.uniform3f(this.u_foreground_color, color.r, color.g, color.b);
+        gl.uniform3f(this.u_stroke_color, stroke.r, stroke.g, stroke.b);
     }
 
     // Specify anchor point location for text

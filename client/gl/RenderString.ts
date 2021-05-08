@@ -1,6 +1,7 @@
 import { RenderContext } from "./RenderContext";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { consoleLog } from "../../netcode/netcode";
+import { RenderColor } from "./RenderCommon";
 
 const kVS: string = `
     precision highp float;
@@ -75,7 +76,7 @@ export class RenderStringProgram {
     }
 
     public DrawString(
-        r: f32, g: f32, b: f32,
+        color: RenderColor,
         x0: f32, y0: f32,
         x1: f32, y1: f32,
         t: u64): void {
@@ -97,7 +98,7 @@ export class RenderStringProgram {
         // attribute | dimensions | data type | normalize | stride bytes | offset bytes
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
 
-        gl.uniform3f(this.u_color, r, g, b);
+        gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform1f(this.u_t, f32(t/4 % 1024) * 4.0 * f32(Math.PI) / 1024.0);
 
         // Use DYNAMIC_DRAW because we want to change this for each line we render

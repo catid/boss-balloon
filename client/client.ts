@@ -12,6 +12,7 @@ import { RenderBulletProgram } from "./gl/RenderBullet";
 import { RenderMapProgram } from "./gl/RenderMap";
 import { RenderArrowProgram } from "./gl/RenderArrow";
 import { RenderSunProgram } from "./gl/RenderSun";
+import { RenderColor } from "./gl/RenderCommon";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -26,7 +27,33 @@ let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
 
+
+//------------------------------------------------------------------------------
+// Constants
+
 const kMapWidth: f32 = 32000.0;
+
+const kMaxTeams: i32 = 5;
+
+const kTeamColors = [
+    new RenderColor(0.8, 0.4, 0.2), // red
+    new RenderColor(0.2, 0.8, 0.2), // green
+    new RenderColor(0.2, 0.4, 0.8), // blue
+    new RenderColor(0.8, 0.3, 0.8), // purple
+    new RenderColor(0.8, 0.8, 0.5)  // pink
+];
+
+const kTeamTextColors = [
+    new RenderColor(1.0, 0.4, 0.2), // red
+    new RenderColor(0.2, 1.0, 0.2), // green
+    new RenderColor(0.2, 0.4, 1.0), // blue
+    new RenderColor(1.0, 0.3, 1.0), // purple
+    new RenderColor(1.0, 1.0, 0.5)  // pink
+];
+
+const kTextStrokeColor = new RenderColor(0.0, 0.0, 0.0);
+
+const kStringColor = new RenderColor(1.0, 1.0, 1.0);
 
 
 //------------------------------------------------------------------------------
@@ -459,10 +486,10 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
 
         player_prog.DrawPlayer(
-            0.8, 0.2, 0.2,
+            kTeamColors[player.team],
             x, y, 0.02, shine_angle, shine_dist, t);
 
-        string_prog.DrawString(1.0, 0.4, 0.4, x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
+        string_prog.DrawString(kTeamColors[player.team], x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
     }
 
     firacode_font.BeginRender();
@@ -474,7 +501,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
             continue;
         }
 
-        firacode_font.SetColor(0.5, 1.0, 0.5,  0.0, 0.0, 0.0);
+        firacode_font.SetColor(kTeamTextColors[player.team],  kTextStrokeColor);
 
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
@@ -493,7 +520,7 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
         const y = ObjectToScreenY(bullet.y, sy);
 
         bullet_prog.DrawBullet(
-            0.8, 0.2, 0.2,
+            kTeamColors[bullet.team],
             x, y, 0.02, t);
     }
 }
@@ -512,7 +539,7 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
         }
 
         bomb_prog.DrawBomb(
-            0.8, 0.2, 0.2,
+            kTeamColors[bomb.team],
             x, y, 0.02, t);
     }
 }
@@ -577,7 +604,7 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
         }
 
         arrow_prog.DrawArrow(
-            0.8, 0.2, 0.2,
+            kTeamColors[player.team],
             x, y, scale, angle, t);
     }
 }
@@ -800,7 +827,7 @@ export function RenderFrame(
 
     if (pointer_active) {
         string_prog.DrawString(
-            1.0, 1.0, 1.0,
+            kStringColor,
             f32(finger_x) / f32(canvas_w),
             f32(finger_y) / f32(canvas_h),
             0.5, 0.5,

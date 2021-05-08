@@ -88,23 +88,25 @@ export class ConnectedClient {
     }
 };
 
+const npt_counts: Array<i32> = new Array<i32>(kMaxTeams);
+
 function ChooseNewPlayerTeam(): u8 {
-    const counts: Array<i32> = new Array<i32>(kMaxTeams);
+    npt_counts.fill(0);
 
     let clients = Clients.values();
     for (let i: i32 = 0; i < clients.length; ++i) {
         const team: i32 = i32(clients[i].team);
 
         if (team >= 0 && team < kMaxTeams) {
-            counts[team]++;
+            npt_counts[team]++;
         }
     }
 
-    let min_count: i32 = counts[0];
+    let min_count: i32 = npt_counts[0];
     let best_team: u8 = 0;
 
     for (let i: i32 = 1; i < kMaxTeams; ++i) {
-        const count: i32 = counts[i];
+        const count: i32 = npt_counts[i];
 
         if (count < min_count) {
             best_team = u8(i);

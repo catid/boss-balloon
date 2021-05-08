@@ -1,6 +1,7 @@
 import { RenderContext } from "./RenderContext";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { consoleLog } from "../../netcode/netcode";
+import { RenderColor } from "./RenderCommon";
 
 const kInnerVS: string = `
     precision highp float;
@@ -233,7 +234,7 @@ export class RenderPlayerProgram {
     }
 
     public DrawPlayer(
-        foreground_r: f32, foreground_g: f32, foreground_b: f32,
+        color: RenderColor,
         x: f32, y: f32,
         scale: f32,
         shine_angle: f32, shine_dist: f32,
@@ -254,7 +255,7 @@ export class RenderPlayerProgram {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.inner_indices_buffer);
 
-        gl.uniform3f(this.inner_u_color, foreground_r, foreground_g, foreground_b);
+        gl.uniform3f(this.inner_u_color, color.r, color.g, color.b);
 
         gl.uniform2f(this.inner_u_xy, x, y);
         gl.uniform1f(this.inner_u_scale, scale);

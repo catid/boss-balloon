@@ -1,6 +1,7 @@
 import { RenderContext } from "./RenderContext";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { consoleLog } from "../../netcode/netcode";
+import { RenderColor } from "./RenderCommon";
 
 const kVS: string = `
     precision highp float;
@@ -119,7 +120,7 @@ export class RenderBombProgram {
     }
 
     public DrawBomb(
-        foreground_r: f32, foreground_g: f32, foreground_b: f32,
+        color: RenderColor,
         x: f32, y: f32,
         scale: f32,
         t: u64): void {
@@ -134,7 +135,7 @@ export class RenderBombProgram {
         // attribute | dimensions | data type | normalize | stride bytes | offset bytes
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
 
-        gl.uniform3f(this.u_color, foreground_r, foreground_g, foreground_b);
+        gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_t, f32(t/4 % 1024) * 4.0 * f32(Math.PI) / 1024.0);
