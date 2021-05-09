@@ -25,15 +25,11 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
-let TimeConverter: Netcode.TimeConverter = new Netcode.TimeConverter(0);
+let TimeConverter: Netcode.TimeConverter;
 
 
 //------------------------------------------------------------------------------
 // Constants
-
-const kMapWidth: f32 = 30000.0;
-
-const kMaxTeams: i32 = 5;
 
 const kTeamColors = [
     new RenderColor(0.8, 0.4, 0.2), // red
@@ -282,7 +278,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             TimeSync.OnPeerSync(t, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
-            sendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
+            //sendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
 
             offset += 14;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
@@ -303,6 +299,8 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             let peer_ts: u32 = Netcode.Load24(ptr, 1);
+
+            // FIXME
 
             TimeSync.OnTimeSample(t, peer_ts);
             t = TimeSync.PeerToLocalTime_FromTS23(peer_ts);
@@ -529,11 +527,11 @@ let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 
 function ObjectToScreen(x: f32, sx: f32): f32 {
     let d = x - sx;
-    if (abs(d) > kMapWidth * 0.5) {
+    if (abs(d) > Netcode.kMapWidth * 0.5) {
         if (d > 0.0) {
-            d -= kMapWidth;
+            d -= Netcode.kMapWidth;
         } else {
-            d += kMapWidth;
+            d += Netcode.kMapWidth;
         }
     }
     return d * 0.001;
@@ -566,14 +564,14 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
         }
 
         let sun_x: f32 = player.x;
-        if (sun_x > kMapWidth * 0.5) {
-            sun_x -= kMapWidth;
+        if (sun_x > Netcode.kMapWidth * 0.5) {
+            sun_x -= Netcode.kMapWidth;
         }
         let sun_y: f32 = player.y;
-        if (sun_y > kMapWidth * 0.5) {
-            sun_y -= kMapWidth;
+        if (sun_y > Netcode.kMapWidth * 0.5) {
+            sun_y -= Netcode.kMapWidth;
         }
-        const shine_angle: f32 = f32(Math.atan2(sun_y, sun_x));
+        const shine_angle: f32 = Mathf.atan2(sun_y, sun_x);
         const shine_max: f32 = 10000.0;
         const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
 
@@ -660,32 +658,32 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
 
         let x: f32 = ObjectToScreen(player.x, sx);
         let y: f32 = ObjectToScreen(player.y, sy);
-        const dist: f32 = f32(Math.sqrt(x * x + y * y));
+        const dist: f32 = Mathf.sqrt(x * x + y * y);
         const scale_min: f32 = 0.01;
         const scale_max: f32 = 0.04;
         const scale: f32 = scale_min + clamp(scale_max - dist * 0.004, 0.0, scale_max - scale_min);
 
-        const angle: f32 = f32(Math.atan2(y, x));
+        const angle: f32 = Mathf.atan2(y, x);
 
         if (x > y) {
             if (x > -y) {
                 // right
                 x = 1.0;
-                y = f32(Math.tan(angle));
+                y = Mathf.tan(angle);
             } else {
                 // top
-                x = f32(Math.tan(angle - Math.PI * 0.5));
+                x = Mathf.tan(angle - Mathf.PI * 0.5);
                 y = -1.0;
             }
         } else {
             if (x > -y) {
                 // bottom
-                x = -f32(Math.tan(angle + Math.PI * 0.5));
+                x = -Mathf.tan(angle + Mathf.PI * 0.5);
                 y = 1.0;
             } else {
                 // left
                 x = -1.0;
-                y = -f32(Math.tan(angle));
+                y = -Mathf.tan(angle);
             }
         }
 
@@ -706,6 +704,10 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
             x, y, scale, angle, t);
     }
 }
+
+
+//------------------------------------------------------------------------------
+// Physics
 
 function SimulationStep(dt: f32, t: u64): void {
     const players_count = player_list.length;
@@ -752,15 +754,15 @@ function SimulationStep(dt: f32, t: u64): void {
             player.x += vx * dt;
             player.y += vy * dt;
 
-            if (player.x >= kMapWidth) {
-                player.x -= kMapWidth;
+            if (player.x >= Netcode.kMapWidth) {
+                player.x -= Netcode.kMapWidth;
             } else if (player.x < 0.0) {
-                player.x += kMapWidth;
+                player.x += Netcode.kMapWidth;
             }
-            if (player.y >= kMapWidth) {
-                player.y -= kMapWidth;
+            if (player.y >= Netcode.kMapWidth) {
+                player.y -= Netcode.kMapWidth;
             } else if (player.y < 0.0) {
-                player.y += kMapWidth;
+                player.y += Netcode.kMapWidth;
             }
         }
     }
@@ -771,15 +773,15 @@ function SimulationStep(dt: f32, t: u64): void {
         bomb.x += bomb.vx * dt;
         bomb.y += bomb.vy * dt;
 
-        if (bomb.x >= kMapWidth) {
-            bomb.x -= kMapWidth;
+        if (bomb.x >= Netcode.kMapWidth) {
+            bomb.x -= Netcode.kMapWidth;
         } else if (bomb.x < 0.0) {
-            bomb.x += kMapWidth;
+            bomb.x += Netcode.kMapWidth;
         }
-        if (bomb.y >= kMapWidth) {
-            bomb.y -= kMapWidth;
+        if (bomb.y >= Netcode.kMapWidth) {
+            bomb.y -= Netcode.kMapWidth;
         } else if (bomb.y < 0.0) {
-            bomb.y += kMapWidth;
+            bomb.y += Netcode.kMapWidth;
         }
 
         if (i32(t - bomb.t) > 10_000 * 4) {
@@ -795,15 +797,15 @@ function SimulationStep(dt: f32, t: u64): void {
         bullet.x += bullet.vx * dt;
         bullet.y += bullet.vy * dt;
 
-        if (bullet.x >= kMapWidth) {
-            bullet.x -= kMapWidth;
+        if (bullet.x >= Netcode.kMapWidth) {
+            bullet.x -= Netcode.kMapWidth;
         } else if (bullet.x < 0.0) {
-            bullet.x += kMapWidth;
+            bullet.x += Netcode.kMapWidth;
         }
-        if (bullet.y >= kMapWidth) {
-            bullet.y -= kMapWidth;
+        if (bullet.y >= Netcode.kMapWidth) {
+            bullet.y -= Netcode.kMapWidth;
         } else if (bullet.y < 0.0) {
-            bullet.y += kMapWidth;
+            bullet.y += Netcode.kMapWidth;
         }
 
         if (i32(t - bullet.t) > 10_000 * 4) {
@@ -832,6 +834,58 @@ function Physics(t: u64): void {
         last_t += dt;
     }
 }
+
+
+//------------------------------------------------------------------------------
+// Position Update
+
+let last_position_send: u64 = 0;
+let last_ax: f32 = 0.0;
+let last_ay: f32 = 0.0;
+
+function SendPosition(t: u64): void {
+    if (temp_self == null) {
+        return;
+    }
+
+    let dt: i64 = i64(t - last_position_send);
+    if (dt < 100 * 4) {
+        return;
+    }
+
+    if (dt < 200 * 4) {
+        if (Mathf.abs(temp_self!.ax - last_ax) < 0.3 &&
+            Mathf.abs(temp_self!.ay - last_ay) < 0.3) {
+            return;
+        }
+    }
+
+    last_position_send = t;
+    last_ax = temp_self!.ax;
+    last_ay = temp_self!.ay;
+
+    let buffer: Uint8Array = new Uint8Array(14);
+    let ptr: usize = buffer.dataStart;
+
+    store<u8>(ptr, Netcode.UnreliableType.ClientPosition, 0);
+
+    let remote_ts: u32 = TimeSync.LocalToPeerTime_ToTS23(t);
+    Netcode.Store24(ptr, 1, remote_ts);
+
+    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.x), 4);
+    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.y), 6);
+
+    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vx), 8);
+    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
+
+    store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
+
+    sendUnreliable(buffer);
+}
+
+
+//------------------------------------------------------------------------------
+// Render
 
 let hack_last_bullet_fire: u64 = 0;
 let hack_bomb_counter: i32 = 0;
@@ -863,7 +917,7 @@ export function RenderFrame(
         temp_self!.ay = 0;
 
         if (pointer_active) {
-            const mag: f32 = f32(Math.sqrt(fx * fx + fy * fy));
+            const mag: f32 = Mathf.sqrt(fx * fx + fy * fy);
             const dead_zone: f32 = 0.1;
             if (mag > dead_zone) {
                 const accel: f32 = 0.001;
@@ -876,6 +930,8 @@ export function RenderFrame(
     }
 
     Physics(t);
+
+    SendPosition(t);
 
     let sx: f32 = 0, sy: f32 = 0;
     if (temp_self != null) {
@@ -891,7 +947,7 @@ export function RenderFrame(
             } else {
                 const bullet_speed: f32 = 0.5;
 
-                const mag: f32 = f32(Math.sqrt(vx * vx + vy * vy));
+                const mag: f32 = Mathf.sqrt(vx * vx + vy * vy);
                 const vfactor = bullet_speed / mag;
                 vx *= vfactor;
                 vy *= vfactor;

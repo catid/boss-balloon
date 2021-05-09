@@ -10,6 +10,16 @@ export declare function getMilliseconds(): f64
 
 export namespace Netcode {
 
+
+//------------------------------------------------------------------------------
+// Constants
+
+// Width/height of map
+export const kMapWidth: f32 = 32000.0;
+
+// Maximum number of teams
+export const kMaxTeams: i32 = 5;
+
 /*
     Maximum packet size = 1100 bytes before splitting,
     since there are about 64 bytes of overhead from WebRTC,
@@ -43,22 +53,16 @@ export const kMaxPacketBytes: i32 = 1100;
 */
 
 /*
-    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)] [Player Count-1(1 byte)] Repeated (LSB-first): {
+    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
+    [Player Count(1 byte)] Repeated (LSB-first): {
         [PlayerId(8 bits)]
-
         [x(16 bits)] [y(16 bits)]
-
-        16-bit field:
-            [Size(4 bits)]            (low bits)
-            [vx(5 bits)] [vy(5 bits)]
-            [Not Moving=1(1 bit)]
-            [Reserved(1 bit)]         (high bits)
-
-        [Acceleration Angle(8 bits)]
-    }
+        [vx(16 bits)] [vy(16 bits)]
+        [accel angle(16 bits)]
+        [last_shot_x(16 bits)] [last_shot_y(16 bits)]
+        [last_shot_vx(16 bits)] [last_shot_vy(16 bits)]
+    } (19 bytes per client)
     Sent by server to update client position.
-
-    Each player takes 64 bits so it's just 8 bytes per player.
 
     Size of the ship implies number of guns firing bullets.
     Size=0 indicates dead player.
@@ -849,5 +853,85 @@ export function MakeChat(id: u8, m: string): Uint8Array | null {
 
     return buffer;
 }
+
+
+//------------------------------------------------------------------------------
+// Positioning
+
+// Breaks down after (x,y) > 32767 or < 0.
+export function ConvertXto16(x: f32): u16 {
+    let temp: i32 = i32(x * 2.0 + 0.5);
+    if (temp > 65535) {
+        temp = 65535;
+    } else if (temp < 0) {
+        temp = 0;
+    }
+    return u16(temp);
+}
+
+export function Convert16toX(x: u16): f32 {
+    return f32(x) * 0.5;
+}
+
+// Breaks down after |(vx,vy)| > 1.0
+export function ConvertVXto16(vx: f32): i16 {
+    let temp: i32 = i32(vx * 32767.0);
+    if (temp > 32767) {
+        temp = 32767;
+    } else if (temp < -32767) {
+        temp = -32767;
+    }
+    return i16(temp);
+}
+
+const inv_vx_factor: f32 = 1.0 / 32767.0;
+
+export function Convert16toVX(vx: i16): f32 {
+    return vx * inv_vx_factor;
+}
+
+const aa_factor: f32 = 65534.0 / (Mathf.PI * 2.0);
+
+export function ConvertAccelto16(ax: f32, ay: f32): u16 {
+    if (ax == 0.0 && ay == 0.0) {
+        return 0;
+    }
+
+    let angle: f64 = Math.atan2(ay, ax);
+    if (angle < 0.0) {
+        angle += Math.PI;
+    }
+
+    let aa: u16 = u16(angle * aa_factor + 0.5);
+    if (aa > 65534) {
+        aa = 65534;
+    }
+    ++aa;
+    return aa;
+}
+
+export class AccelXY {
+    ax: f32
+    ay: f32
+}
+
+const inv_aa_factor: f32 = (Mathf.PI * 2.0) / 65534.0;
+
+export function Convert16toAccel(aa: u16): AccelXY {
+    let r: AccelXY = new AccelXY();
+
+    if (aa == 0) {
+        r.ax = 0.0;
+        r.ay = 0.0;
+        return r;
+    }
+
+    const angle: f32 = (aa - 1) * inv_aa_factor;
+
+    r.ax = Mathf.cos(angle);
+    r.ay = Mathf.cos(angle);
+    return r;
+}
+
 
 } // namespace Netcode

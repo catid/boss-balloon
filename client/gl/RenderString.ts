@@ -98,7 +98,7 @@ export class RenderStringProgram {
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
 
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
-        gl.uniform1f(this.u_t, f32(t/4 % 1024) * 4.0 * f32(Math.PI) / 1024.0);
+        gl.uniform1f(this.u_t, f32(t/4 % 1024) * 4.0 * Mathf.PI / 1024.0);
 
         // Use DYNAMIC_DRAW because we want to change this for each line we render
         gl.bufferData<f32>(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);

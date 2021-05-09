@@ -100,8 +100,8 @@ export class RenderPlayerData {
             cells = 127;
         }
 
-        const base_angle: f32 = 2.0 * f32(Math.PI) / f32(cells);
-        const outer_radius_max: f32 = outer_radius_min / f32(Math.cos(base_angle));
+        const base_angle: f32 = 2.0 * Mathf.PI / f32(cells);
+        const outer_radius_max: f32 = outer_radius_min / Mathf.cos(base_angle);
 
         this.vertices = new StaticArray<f32>(2 + 4 * cells);
         this.inner_indices = new StaticArray<u8>(3 * cells);
@@ -116,8 +116,8 @@ export class RenderPlayerData {
 
         for (let i: i32 = 0; i < cells; ++i) {
             const angle: f32 = base_angle * f32(i);
-            const cos_angle: f32 = f32(Math.cos(angle));
-            const sin_angle: f32 = f32(Math.sin(angle));
+            const cos_angle: f32 = Mathf.cos(angle);
+            const sin_angle: f32 = Mathf.sin(angle);
 
             this.vertices[iv + 0] = inner_radius_max * cos_angle;
             this.vertices[iv + 1] = inner_radius_max * sin_angle;
@@ -283,7 +283,7 @@ export class RenderPlayerProgram {
 
         gl.uniform2f(this.outer_u_xy, x, y);
         gl.uniform1f(this.outer_u_scale, scale);
-        gl.uniform1f(this.outer_u_t, f32(t/4 % 1024) * 2.0 * f32(Math.PI) / 1024.0);
+        gl.uniform1f(this.outer_u_t, f32(t/4 % 1024) * 2.0 * Mathf.PI / 1024.0);
 
         // Use DYNAMIC_DRAW because we want to change this for each line we render
         gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, data.outer_indices, gl.DYNAMIC_DRAW);

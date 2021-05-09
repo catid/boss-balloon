@@ -143,7 +143,7 @@ export class RenderBulletProgram {
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_t, f32((t + 333333)/4 % 1024) * 3.0 * f32(Math.PI) / 1024.0);
+        gl.uniform1f(this.u_t, f32((t + 333333)/4 % 1024) * 3.0 * Mathf.PI / 1024.0);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }

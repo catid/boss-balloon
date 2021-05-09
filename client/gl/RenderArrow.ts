@@ -110,7 +110,7 @@ export class RenderArrowProgram {
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_t, f32((t + 235235)/4 % 1024) * 2.1 * f32(Math.PI) / 1024.0);
+        gl.uniform1f(this.u_t, f32((t + 235235)/4 % 1024) * 2.1 * Mathf.PI / 1024.0);
 
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

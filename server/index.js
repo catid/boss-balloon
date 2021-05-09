@@ -198,9 +198,9 @@ class WebRTCClient {
                 };
                 this.dispatchTimeSync();
 
-                this.reliableSendTimer = setInterval(() => {
+                this.sendTimer = setInterval(() => {
                     if (this.client != null) {
-                        wasmExports.OnReliableSendTimer(this.client);
+                        wasmExports.OnSendTimer(this.client);
                     }
                 }, 100);
 
@@ -244,9 +244,9 @@ class WebRTCClient {
             clearTimeout(this.syncTimer);
             this.syncTimer= null;
         }
-        if (this.reliableSendTimer != null) {
-            clearInterval(this.reliableSendTimer);
-            this.reliableSendTimer= null;
+        if (this.sendTimer != null) {
+            clearInterval(this.sendTimer);
+            this.sendTimer= null;
         }
         if (this.setupTimeout != null) {
             clearTimeout(this.setupTimeout);
@@ -487,12 +487,14 @@ wasmExports = wasmModule.exports;
 
 
 //------------------------------------------------------------------------------
-// Authoritative Physics Loop
+// Main Loop
 
 function NextLoop() {
     wasmExports.OnTick(performance.now());
 
-    setTimeout(NextLoop, 20_000);
+    setTimeout(NextLoop, 5);
 }
+
+wasmExports.Initialize(performance.now());
 
 NextLoop();
