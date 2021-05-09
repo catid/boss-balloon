@@ -292,7 +292,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            if (pong < ping || t < pong) {
+            if (pong < ping || t + 1 < pong) {
                 consoleLog("*** TEST FAILED!");
                 consoleLog("Ping T = " + ping.toString());
                 consoleLog("Pong T = " + pong.toString());
@@ -501,6 +501,7 @@ class BulletWeapon {
     vx: f32 = 0;
     vy: f32 = 0;
     team: u8 = 0;
+    angle0: f32 = 0;
     t: u64 = 0;
 }
 
@@ -510,6 +511,7 @@ class BombWeapon {
     vx: f32 = 0;
     vy: f32 = 0;
     team: u8 = 0;
+    angle0: f32 = 0;
     t: u64 = 0;
 }
 
@@ -520,6 +522,11 @@ let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 //------------------------------------------------------------------------------
 // Render
 
+/*
+    Screen coordinates are (-1, -1) for upper-left corner and (1, 1) for the
+    lower-right corner.
+*/
+
 function ObjectToScreen(x: f32, sx: f32): f32 {
     let d = x - sx;
     if (abs(d) > kMapWidth * 0.5) {
@@ -529,11 +536,12 @@ function ObjectToScreen(x: f32, sx: f32): f32 {
             d += kMapWidth;
         }
     }
-    return d * 0.001 + 0.5;
+    return d * 0.001;
 }
 
-function IsObjectOnScreen(x: f32, y: f32, r: f32): bool {
-    return x >= -r && x <= 1.0 + r && y >= -r && y <= 1.0 + r;
+function IsObjectOnScreen(x: f32, y: f32, r: f32 = 0.0): bool {
+    r += 1.0;
+    return abs(x) <= r && abs(y) <= r;
 }
 
 function RenderPlayers(t: u64, sx: f32, sy: f32): void {
@@ -551,7 +559,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         player.temp_screen_x = x;
         player.temp_screen_y = y;
-        player.on_screen = IsObjectOnScreen(x, y, 0.1);
+        player.on_screen = IsObjectOnScreen(x, y, 0.04);
 
         if (!player.on_screen) {
             continue;
@@ -571,7 +579,7 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         player_prog.DrawPlayer(
             kTeamColors[player.team],
-            x, y, 0.02, shine_angle, shine_dist, t);
+            x, y, 0.04, shine_angle, shine_dist, t);
 
         string_prog.DrawString(kTeamColors[player.team], x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
     }
@@ -589,13 +597,15 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
 
         firacode_font.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
-            player.temp_screen_x, player.temp_screen_y + 0.03,
-            0.16/player.name_data!.width, player.name_data!);
+            player.temp_screen_x, player.temp_screen_y + 0.06,
+            0.32/player.name_data!.width, player.name_data!);
     }
 }
 
 function RenderBullets(t: u64, sx: f32, sy: f32): void {
     const count = BulletList.length;
+
+    const angle: f32 = f32(t % 100000) / 5000.0;
 
     for (let i: i32 = 0; i < count; ++i) {
         const bullet = BulletList[i];
@@ -603,18 +613,20 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
         const x = ObjectToScreen(bullet.x, sx);
         const y = ObjectToScreen(bullet.y, sy);
 
-        if (!IsObjectOnScreen(x, y, 0.02)) {
+        if (!IsObjectOnScreen(x, y, 0.04)) {
             continue;
         }
 
         bullet_prog.DrawBullet(
             kTeamColors[bullet.team],
-            x, y, 0.02, t);
+            x, y, 0.04, bullet.angle0 + angle, t);
     }
 }
 
 function RenderBombs(t: u64, sx: f32, sy: f32): void {
     const count = BombList.length;
+
+    const angle: f32 = f32(t % 100000) / 4000.0;
 
     for (let i: i32 = 0; i < count; ++i) {
         const bomb = BombList[i];
@@ -628,7 +640,7 @@ function RenderBombs(t: u64, sx: f32, sy: f32): void {
 
         bomb_prog.DrawBomb(
             kTeamColors[bomb.team],
-            x, y, 0.05, t);
+            x, y, 0.1, bomb.angle0 + angle, t);
     }
 }
 
@@ -646,48 +658,47 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
             continue;
         }
 
-        let x: f32 = player.x - sx;
-        let y: f32 = player.y - sy;
+        let x: f32 = ObjectToScreen(player.x, sx);
+        let y: f32 = ObjectToScreen(player.y, sy);
         const dist: f32 = f32(Math.sqrt(x * x + y * y));
-        const scale_min: f32 = 0.005;
-        const scale_max: f32 = 0.02;
-        const scale: f32 = scale_min + clamp(scale_max - dist * 0.000003, 0.0, scale_max - scale_min);
+        const scale_min: f32 = 0.01;
+        const scale_max: f32 = 0.04;
+        const scale: f32 = scale_min + clamp(scale_max - dist * 0.004, 0.0, scale_max - scale_min);
 
         const angle: f32 = f32(Math.atan2(y, x));
-        const edge_offset: f32 = 0.02;
 
         if (x > y) {
             if (x > -y) {
                 // right
                 x = 1.0;
-                y = 0.5 * f32(Math.tan(angle)) + 0.5;
+                y = f32(Math.tan(angle));
             } else {
                 // top
-                x = 0.5 * f32(Math.tan(angle - Math.PI * 0.5)) + 0.5;
-                y = 0.0;
+                x = f32(Math.tan(angle - Math.PI * 0.5));
+                y = -1.0;
             }
         } else {
             if (x > -y) {
                 // bottom
-                x = -0.5 * f32(Math.tan(angle + Math.PI * 0.5)) + 0.5;
+                x = -f32(Math.tan(angle + Math.PI * 0.5));
                 y = 1.0;
             } else {
                 // left
-                x = 0.0;
-                y = -0.5 * f32(Math.tan(angle)) + 0.5;
+                x = -1.0;
+                y = -f32(Math.tan(angle));
             }
         }
 
-        // offset from edge
-        if (x < edge_offset) {
-            x = edge_offset;
-        } else if (x > 1.0 - edge_offset) {
-            x = 1.0 - edge_offset;
+        const edge_limit: f32 = 0.04;
+        if (x < -1.0 + edge_limit) {
+            x = -1.0 + edge_limit;
+        } else if (x > 1.0 - edge_limit) {
+            x = 1.0 - edge_limit;
         }
-        if (y < edge_offset) {
-            y = edge_offset;
-        } else if (y > 1.0 - edge_offset) {
-            y = 1.0 - edge_offset;
+        if (y < -1.0 + edge_limit) {
+            y = -1.0 + edge_limit;
+        } else if (y > 1.0 - edge_limit) {
+            y = 1.0 - edge_limit;
         }
 
         arrow_prog.DrawArrow(
@@ -836,7 +847,10 @@ export function RenderFrame(
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = TimeConverter.MsecToTime(now_msec);
 
-    let pointer_active: bool = (finger_x >= 0 && finger_x < canvas_w && finger_y >= 0 && finger_y < canvas_w);
+    let fx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
+    let fy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
+
+    let pointer_active: bool = IsObjectOnScreen(fx, fy);
 
     player_list = player_map.values();
 
@@ -849,15 +863,12 @@ export function RenderFrame(
         temp_self!.ay = 0;
 
         if (pointer_active) {
-            const fcx = finger_x - canvas_w / 2;
-            const fcy = finger_y - canvas_h / 2;
-            const mag: f32 = f32(Math.sqrt(fcx * fcx + fcy * fcy));
-            if (mag > f32(canvas_w / 10)) {
-                const limit: f32 = 0.001;
-                if (mag > 0) {
-                    temp_self!.ax = f32(fcx) * limit / mag;
-                    temp_self!.ay = f32(fcy) * limit / mag;
-                }
+            const mag: f32 = f32(Math.sqrt(fx * fx + fy * fy));
+            const dead_zone: f32 = 0.1;
+            if (mag > dead_zone) {
+                const accel: f32 = 0.001;
+                temp_self!.ax = f32(fx) * accel / mag;
+                temp_self!.ay = f32(fy) * accel / mag;
             }
         }
 
@@ -884,7 +895,7 @@ export function RenderFrame(
                 const vfactor = bullet_speed / mag;
                 vx *= vfactor;
                 vy *= vfactor;
-    
+
                 if (hack_bomb_counter == 0) {
                     const bomb = new BombWeapon;
                     bomb.vx = temp_self!.vx + vx;
@@ -893,6 +904,7 @@ export function RenderFrame(
                     bomb.y = temp_self!.y;
                     bomb.t = t;
                     bomb.team = temp_self!.team;
+                    bomb.angle0 = Mathf.random() * 3.14159 * 2.0;
                     BombList.push(bomb);
                 } else {
                     const bullet = new BulletWeapon;
@@ -902,6 +914,7 @@ export function RenderFrame(
                     bullet.y = temp_self!.y;
                     bullet.t = t;
                     bullet.team = temp_self!.team;
+                    bullet.angle0 = Mathf.random() * 3.14159 * 2.0;
                     BulletList.push(bullet);
                 }
 
@@ -923,7 +936,7 @@ export function RenderFrame(
     RenderBombs(t, sx, sy);
     RenderBullets(t, sx, sy);
 
-    const sun_radius: f32 = 0.5;
+    const sun_radius: f32 = 1.4;
     if (IsObjectOnScreen(origin_x, origin_y, sun_radius)) {
         sun_prog.DrawSun(origin_x, origin_y, sun_radius, t);
     }
@@ -933,9 +946,9 @@ export function RenderFrame(
     if (pointer_active) {
         string_prog.DrawString(
             kStringColor,
-            f32(finger_x) / f32(canvas_w),
-            f32(finger_y) / f32(canvas_h),
-            0.5, 0.5,
+            fx,
+            fy,
+            0.0, 0.0,
             t);
     }
 

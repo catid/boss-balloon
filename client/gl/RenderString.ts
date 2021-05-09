@@ -13,10 +13,9 @@ const kVS: string = `
     varying float v_dist;
 
     void main() {
-        v_dist = clamp(1.0 - distance(a_position, vec2(0.5, 0.5)), 0.0, 1.0);
         vec2 p = a_position;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        v_dist = clamp(1.0 - length(p), 0.0, 1.0);
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 

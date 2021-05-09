@@ -10,15 +10,17 @@ const kVS: string = `
     attribute vec2 a_position;
     uniform vec2 u_xy;
     uniform float u_scale;
+    uniform float u_angle;
 
     // Output to fragment shader:
     varying vec2 v_pos;
 
     void main() {
-        v_pos = a_position;
-        vec2 p = a_position * u_scale + u_xy;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        vec2 p = a_position;
+        v_pos = p;
+        p = vec2(-p.x * sin(u_angle) + p.y * cos(u_angle), p.x * cos(u_angle) + p.y * sin(u_angle));
+        p = p * u_scale + u_xy;
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 
@@ -63,6 +65,7 @@ export class RenderBulletProgram {
     u_xy: WebGLUniformLocation;
     u_color: WebGLUniformLocation;
     u_scale: WebGLUniformLocation;
+    u_angle: WebGLUniformLocation;
     u_t: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
@@ -89,6 +92,7 @@ export class RenderBulletProgram {
         this.u_xy = gl.getUniformLocation(this.program, "u_xy");
         this.u_color = gl.getUniformLocation(this.program, "u_color");
         this.u_scale = gl.getUniformLocation(this.program, "u_scale");
+        this.u_angle = gl.getUniformLocation(this.program, "u_angle");
         this.u_t = gl.getUniformLocation(this.program, "u_t");
 
         this.vertices_buffer = gl.createBuffer();
@@ -122,7 +126,7 @@ export class RenderBulletProgram {
     public DrawBullet(
         color: RenderColor,
         x: f32, y: f32,
-        scale: f32,
+        scale: f32, angle: f32,
         t: u64): void {
         const gl = RenderContext.I.gl;
 
@@ -138,6 +142,7 @@ export class RenderBulletProgram {
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
+        gl.uniform1f(this.u_angle, angle);
         gl.uniform1f(this.u_t, f32((t + 333333)/4 % 1024) * 3.0 * f32(Math.PI) / 1024.0);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);

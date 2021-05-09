@@ -14,10 +14,10 @@ const kVS: string = `
     varying vec2 v_pos;
 
     void main() {
-        v_pos = a_position * 4.0;
-        vec2 p = a_position * u_scale + u_xy;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        vec2 p = a_position;
+        v_pos = p * 4.0;
+        p = p * u_scale + u_xy;
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 

@@ -217,7 +217,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let ping: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
             let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
-            if (pong < ping || t < pong) {
+            if (pong < ping || t + 1 < pong) {
                 consoleLog("*** TEST FAILED!");
                 consoleLog("Ping T = " + ping.toString());
                 consoleLog("Pong T = " + pong.toString());

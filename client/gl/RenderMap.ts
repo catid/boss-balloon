@@ -15,10 +15,9 @@ const kVertexShaderCode: string = `
     varying vec2 v_coord;
 
     void main() {
-        v_coord = a_position * u_scale + u_xy;
         vec2 p = a_position;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        v_coord = p * u_scale + u_xy;
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 
@@ -183,13 +182,13 @@ export class RenderMapProgram {
         this.indices_buffer = gl.createBuffer();
 
         let vertex_data: StaticArray<f32> = new StaticArray<f32>(8);
-        vertex_data[0] = 0.0;
-        vertex_data[1] = 0.0;
+        vertex_data[0] = -1.0;
+        vertex_data[1] = -1.0;
         vertex_data[2] = 1.0;
-        vertex_data[3] = 0.0;
+        vertex_data[3] = -1.0;
         vertex_data[4] = 1.0;
         vertex_data[5] = 1.0;
-        vertex_data[6] = 0.0;
+        vertex_data[6] = -1.0;
         vertex_data[7] = 1.0;
 
         let index_data: StaticArray<u8> = new StaticArray<u8>(6);

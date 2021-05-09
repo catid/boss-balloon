@@ -18,8 +18,7 @@ const kVertexShaderCode: string = `
     void main() {
         uv_coord = a_texcoord;
         vec2 p = a_position * u_scale + u_xy;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 

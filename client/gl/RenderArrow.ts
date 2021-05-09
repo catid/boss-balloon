@@ -16,12 +16,11 @@ const kVS: string = `
     varying vec2 v_pos;
 
     void main() {
-        v_pos = a_position;
         vec2 p = a_position;
+        v_pos = p;
         p = vec2(-p.x * sin(u_angle) + p.y * cos(u_angle), p.x * cos(u_angle) + p.y * sin(u_angle));
         p = p * u_scale + u_xy;
-        // Normalized upper left (0,0) lower right (1,1)
-        gl_Position = vec4((p.x - 0.5) * 2.0, (0.5 - p.y) * 2.0, 0.0, 1.0);
+        gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
 
