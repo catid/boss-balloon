@@ -1,5 +1,4 @@
-//import { initASWebGLue, ASWebGLReady } from './ASWebGLue.js';
-import { initASWebGLue, ASWebGLReady } from './ASWebGLue2.js'; // No try..catch
+import { initASWebGLue, ASWebGLReady } from './ASWebGLue2.js';
 import * as loader from './loader.esm.js'
 
 const ClientSessionId = Math.random().toString(36).substr(2, 9);
@@ -63,8 +62,8 @@ function OnConnectionOpen() {
             dispatchTimeSync();
         }, timeSyncInterval + variance);
         timeSyncInterval *= 2;
-        if (timeSyncInterval > 1_000) {
-            timeSyncInterval = 1_000; // Steady state interval
+        if (timeSyncInterval > 1000) {
+            timeSyncInterval = 1000; // Steady state interval
         }
     };
     dispatchTimeSync();
@@ -257,11 +256,11 @@ function StartWebsocket() {
         // FIXME: Remove this
         setTimeout(() => {
             location.reload();
-        }, 3_000);
+        }, 3000);
 
         setTimeout(() => {
             StartWebsocket();
-        }, 1_000);
+        }, 1000);
     };
     ws_conn.onerror = (ev) => {
         console.error("WebSocket error", ev);
@@ -505,7 +504,7 @@ const wasmImports = {
 
 function startRender(wasm_file) {
     // Linear memory
-    const memory = new WebAssembly.Memory({ initial: 10_000 });
+    const memory = new WebAssembly.Memory({ initial: 10000 });
 
     var importObject = {
         ...wasmImports,

@@ -163,12 +163,12 @@ export function initASWebGLue(importObject) {
 
   importObject.WebGL.getArrayInfo = (id) => {
     const info = WebGL.getInfo(id);
-    if (!(info & (ARRAYBUFFERVIEW | ARRAY | STATICARRAY))) throw Error(`not an array: ${id}, flags=${info}`);
+    if (!(info & (WebGL.ARRAYBUFFERVIEW | WebGL.ARRAY | WebGL.STATICARRAY))) throw Error(`not an array: ${id}, flags=${info}`);
     return info;
   }
 
   importObject.WebGL.getValueAlign = (info) => {
-    return 31 - Math.clz32((info >>> VAL_ALIGN_OFFSET) & 31); // -1 if none
+    return 31 - Math.clz32((info >>> WebGL.VAL_ALIGN_OFFSET) & 31); // -1 if none
   }
 
   importObject.WebGL.getArrayView = (arr_ptr) => {
@@ -291,7 +291,7 @@ export function initASWebGLue(importObject) {
   importObject.WebGL["bufferData<u8>"] = bufferdata;
 
   // LAST TWO PARAMETERS ARE IN WEBGL 2.0
-  importObject.WebGL.bufferSubData = (target, dstByteOffset, srcData, srcOffset, length) => {
+  importObject.WebGL.bufferSubData = (ctx, target, dstByteOffset, srcData, srcOffset, length) => {
     WebGL.contextArray[ctx].bufferSubData(target, dstByteOffset, WebGL.getArrayView(srcData), srcOffset, length);
   }
 
@@ -446,7 +446,7 @@ export function initASWebGLue(importObject) {
   // Sets the culling mode
   importObject.WebGL.cullFace = (ctx, mode) => {
     try {
-      WebGL.contextArray[ctx].cullFace(target, mode);
+      WebGL.contextArray[ctx].cullFace(mode);
     } catch (err) {
       console.log("cullFace error");
       console.error(err);
