@@ -421,95 +421,91 @@ function renderFrame() {
 //------------------------------------------------------------------------------
 // WebAssembly Frame Loop
 
-const wasmImports = {
-    netcode: {
-        consoleLog: (m) => {
-            // Make a copy because the memory may have moved by the next tick
-            var copy = wasmExports.__getString(m);
-            //console.log(copy); // sync version
-            setTimeout(() => { console.log(copy); }, 50); // async version
-        },
-        getMilliseconds: () => {
-            return performance.now();
-        }
-    },
-    client: {
-        sendReliable: (buffer) => {
-            if (webrtc_reliable != null) {
-                webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
-            }
-        },
-        sendUnreliable: (buffer) => {
-            if (webrtc_unreliable != null) {
-                webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
-            }
-        },
-        playMusic: (name) => {
-            var copy = wasmExports.__getString(name);
-            setTimeout(() => {
-                if (ActiveMusic != copy) {
-                    var old_music = ActiveMusic;
-                    var anim_out_fn = () => {
-                        var new_volume = MusicMap[old_music].volume - 0.1;
-                        if (new_volume <= 0.0) {
-                            MusicMap[old_music].pause();
-                        } else {
-                            MusicMap[old_music].volume = new_volume;
-                            setTimeout(anim_out_fn, 100);
-                        }
-                    };
-                    anim_out_fn();
-                }
-                ActiveMusic = copy;
-                if (can_use_audio) {
-                    var new_music = ActiveMusic;
-                    MusicMap[new_music].volume = 0.1;
-                    if (is_active) {
-                        MusicMap[new_music].play();
-                    }
-                    var anim_in_fn = () => {
-                        var new_volume = MusicMap[new_music].volume + 0.1;
-                        if (new_volume < 1.0) {
-                            MusicMap[new_music].volume = new_volume;
-                            setTimeout(anim_in_fn, 100);
-                        } else {
-                            MusicMap[new_music].volume = 1.0;
-                        }
-                    };
-                    anim_in_fn();
-                    MusicMap[ActiveMusic].loop = true;
-                }
-            }, 0);
-        },
-        playSFX: (name) => {
-            var copy = wasmExports.__getString(name);
-            setTimeout(() => {
-                if (can_use_audio) {
-                    SoundEffects[copy].pause();
-                    SoundEffects[copy].play();
-                }
-            }, 0);
-        },
-        serverLoginGood: () => {
-            console.log("LoginGood");
-        },
-        serverLoginBad: (reason) => {
-            var copy = wasmExports.__getString(reason);
-            console.error("LoginBad:", copy);
-        }
+let wasmImports = {};
+wasmImports["netcode"] = {};
+wasmImports["netcode"]["consoleLog"] = (m) => {
+    // Make a copy because the memory may have moved by the next tick
+    var copy = wasmExports.__getString(m);
+    //console.log(copy); // sync version
+    setTimeout(() => { console.log(copy); }, 50); // async version
+};
+wasmImports["netcode"]["getMilliseconds"] = () => {
+    return performance.now();
+};
+wasmImports["client"] = {};
+wasmImports["client"]["sendReliable"] = (buffer) => {
+    if (webrtc_reliable != null) {
+        webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
     }
 };
+wasmImports["client"]["sendUnreliable"] = (buffer) => {
+    if (webrtc_unreliable != null) {
+        webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
+    }
+};
+wasmImports["client"]["playMusic"] = (name) => {
+    var copy = wasmExports.__getString(name);
+    setTimeout(() => {
+        if (ActiveMusic != copy) {
+            var old_music = ActiveMusic;
+            var anim_out_fn = () => {
+                var new_volume = MusicMap[old_music].volume - 0.1;
+                if (new_volume <= 0.0) {
+                    MusicMap[old_music].pause();
+                } else {
+                    MusicMap[old_music].volume = new_volume;
+                    setTimeout(anim_out_fn, 100);
+                }
+            };
+            anim_out_fn();
+        }
+        ActiveMusic = copy;
+        if (can_use_audio) {
+            var new_music = ActiveMusic;
+            MusicMap[new_music].volume = 0.1;
+            if (is_active) {
+                MusicMap[new_music].play();
+            }
+            var anim_in_fn = () => {
+                var new_volume = MusicMap[new_music].volume + 0.1;
+                if (new_volume < 1.0) {
+                    MusicMap[new_music].volume = new_volume;
+                    setTimeout(anim_in_fn, 100);
+                } else {
+                    MusicMap[new_music].volume = 1.0;
+                }
+            };
+            anim_in_fn();
+            MusicMap[ActiveMusic].loop = true;
+        }
+    }, 0);
+};
+wasmImports["client"]["playSFX"] = (name) => {
+    var copy = wasmExports.__getString(name);
+    setTimeout(() => {
+        if (can_use_audio) {
+            SoundEffects[copy].pause();
+            SoundEffects[copy].play();
+        }
+    }, 0);
+};
+wasmImports["client"]["serverLoginGood"] = () => {
+    console.log("LoginGood");
+};
+wasmImports["client"]["serverLoginBad"] = (reason) => {
+    var copy = wasmExports.__getString(reason);
+    console.error("LoginBad:", copy);
+};
+wasmImports["env"] = {};
 
 function startRender(wasm_file) {
     // Linear memory
     const memory = new WebAssembly.Memory({ initial: 10000 });
 
     var importObject = {
-        ...wasmImports,
-        env: {
-            memory: memory
-        }
+        ...wasmImports
     };
+    importObject["env"]["memory"] = memory;
 
     initASWebGLue(importObject);
 
