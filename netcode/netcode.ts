@@ -14,9 +14,6 @@ export namespace Netcode {
 //------------------------------------------------------------------------------
 // Constants
 
-// Width/height of map
-export const kMapWidth: f32 = 32000.0;
-
 // Maximum number of teams
 export const kMaxTeams: i32 = 5;
 
@@ -899,7 +896,7 @@ export function ConvertAccelto16(ax: f32, ay: f32): u16 {
 
     let angle: f64 = Math.atan2(ay, ax);
     if (angle < 0.0) {
-        angle += Math.PI;
+        angle += 2.0 * Math.PI;
     }
 
     let aa: u16 = u16(angle * aa_factor + 0.5);
@@ -915,23 +912,7 @@ export class AccelXY {
     ay: f32
 }
 
-const inv_aa_factor: f32 = (Mathf.PI * 2.0) / 65534.0;
-
-export function Convert16toAccel(aa: u16): AccelXY {
-    let r: AccelXY = new AccelXY();
-
-    if (aa == 0) {
-        r.ax = 0.0;
-        r.ay = 0.0;
-        return r;
-    }
-
-    const angle: f32 = (aa - 1) * inv_aa_factor;
-
-    r.ax = Mathf.cos(angle);
-    r.ay = Mathf.cos(angle);
-    return r;
-}
+export const inv_aa_factor: f32 = (Mathf.PI * 2.0) / 65534.0;
 
 
 } // namespace Netcode

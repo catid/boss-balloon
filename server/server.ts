@@ -151,7 +151,7 @@ function SimulationStep(dt: f32, t: u64): void {
         if (player.simulation_behind) {
             // If we have finally caught up with the peer's simulation:
             let dt: i32 = i32(t - player.peer_t);
-            if (dt > 0) {
+            if (dt >= 0) {
                 // Roll their state up to current simulation time
                 player.x = player.peer_x;
                 player.y = player.peer_y;
@@ -160,7 +160,9 @@ function SimulationStep(dt: f32, t: u64): void {
                 player.ax = player.peer_ax;
                 player.ay = player.peer_ay;
                 player.simulation_behind = false;
-                SimulateOnePlayer(player, dt);
+                if (dt > 0) {
+                    SimulateOnePlayer(player, dt);
+                }
                 continue;
             }
         }
@@ -213,57 +215,6 @@ function SimulationStep(dt: f32, t: u64): void {
             BulletList[i] = BulletList[BulletList.length - 1];
             BulletList.length--;
             --i;
-        }
-    }
-}
-
-function FireShots(t: u64): void {
-    const players_count = temp_clients.length;
-
-    for (let i: i32 = 0; i < players_count; ++i) {
-        const player = temp_clients[i];
-
-        player.last_shot_x = player.x;
-        player.last_shot_y = player.y;
-
-        if (player.vx == 0.0 && player.vy == 0.0) {
-            player.last_shot_vx = 0.0;
-            player.last_shot_vy = 0.0;
-        } else {
-            const bullet_speed: f32 = 0.5;
-
-            let vx: f32 = player.vx;
-            let vy: f32 = player.vy;
-
-            const mag: f32 = Mathf.sqrt(vx * vx + vy * vy);
-            const vfactor = bullet_speed / mag;
-            vx = vx * vfactor + player.vx;
-            vy = vy * vfactor + player.vy;
-
-            const is_bomb: bool = (t / (500*4)) % 4 == 0;
-
-            if (is_bomb) {
-                const bomb = new BombWeapon;
-                bomb.vx = vx;
-                bomb.vy = vy;
-                bomb.x = player.x;
-                bomb.y = player.y;
-                bomb.t = t;
-                bomb.team = player.team;
-                BombList.push(bomb);
-            } else {
-                const bullet = new BulletWeapon;
-                bullet.vx = vx;
-                bullet.vy = vy;
-                bullet.x = player.x;
-                bullet.y = player.y;
-                bullet.t = t;
-                bullet.team = player.team;
-                BulletList.push(bullet);
-            }
-
-            player.last_shot_vx = vx;
-            player.last_shot_vy = vy;
         }
     }
 }
@@ -567,7 +518,12 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             }
             let fix_t: i32 = i32(t - dt);
 
-            const accel = Netcode.Convert16toAccel(aa);
+            let ax: f32 = 0.0, ay: f32 = 0.0;
+            if (aa != 0) {
+                const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
+                ax = Mathf.cos(angle);
+                ay = Mathf.sin(angle);
+            }
 
             // If the player timestamp is after our last physics iteration:
             let physics_dt: i32 = i32(physics_t - fix_t);
@@ -577,8 +533,8 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
                 client.y = Netcode.Convert16toX(y);
                 client.vx = Netcode.Convert16toVX(vx);
                 client.vy = Netcode.Convert16toVX(vy);
-                client.ax = accel.ax;
-                client.ay = accel.ay;
+                client.ax = ax;
+                client.ay = ay;
 
                 // Roll up player position to current time
                 SimulateOnePlayer(client, physics_dt);
@@ -593,8 +549,8 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
                 client.peer_y = Netcode.Convert16toX(y);
                 client.peer_vx = Netcode.Convert16toVX(vx);
                 client.peer_vy = Netcode.Convert16toVX(vy);
-                client.peer_ax = accel.ax;
-                client.peer_ay = accel.ay;
+                client.peer_ax = ax;
+                client.peer_ay = ay;
             }
 
             offset += 14;

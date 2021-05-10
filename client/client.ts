@@ -13,6 +13,7 @@ import { RenderMapProgram } from "./gl/RenderMap";
 import { RenderArrowProgram } from "./gl/RenderArrow";
 import { RenderSunProgram } from "./gl/RenderSun";
 import { RenderColor } from "./gl/RenderCommon";
+import { Physics } from "../physics/physics";
 
 declare function sendReliable(buffer: Uint8Array): void;
 declare function sendUnreliable(buffer: Uint8Array): void;
@@ -65,44 +66,6 @@ function clamp(x: f32, maxval: f32, minval: f32): f32 {
 
 let SelfId: i32 = -1;
 
-class PositionMessage {
-    valid: bool = false;
-
-    t: u64;
-
-    x: u16;
-    y: u16;
-    size: u8;
-    vx: i8;
-    vy: i8;
-    not_moving: u8;
-    accel_angle: u8;
-
-    constructor() {
-    }
-
-    SetFromBuffer(t: u64, buffer: Uint8Array, offset: i32): void {
-        this.valid = true;
-
-        this.t = t;
-
-        let ptr: usize = buffer.dataStart + offset;
-
-        // Note: Skip player id at offset 0
-        this.x = load<u16>(ptr, 1);
-        this.y = load<u16>(ptr, 3);
-
-        let bf: u16 = load<u16>(ptr, 5);
-
-        this.size = u8(bf & 15);
-        this.vx = i8((bf >> 4) & 31) - 16;
-        this.vy = i8((bf >> (4+5)) & 31) - 16;
-        this.not_moving = u8((bf >> (4+5+5))) & 1;
-
-        this.accel_angle = load<u8>(ptr, 7);
-    }
-};
-
 class Player {
     id: u8 = 0;
     score: u16 = 0;
@@ -115,18 +78,22 @@ class Player {
     is_self: bool = false;
 
     size: u8 = 0;
-    x: f32 = 0;
-    y: f32 = 0;
-    vx: f32 = 0;
-    vy: f32 = 0;
-    ax: f32 = 0;
-    ay: f32 = 0;
+
+    x: f32 = 0.0;
+    y: f32 = 0.0;
+    vx: f32 = 0.0;
+    vy: f32 = 0.0;
+    ax: f32 = 0.0;
+    ay: f32 = 0.0;
+
+    server_x: f32 = 0.0;
+    server_y: f32 = 0.0;
+    server_vx: f32 = 0.0;
+    server_vy: f32 = 0.0;
 
     temp_screen_x: f32 = 0;
     temp_screen_y: f32 = 0;
     on_screen: bool = false;
-
-    LastPositionMessage: PositionMessage = new PositionMessage();
 
     name_data: RenderTextData | null = null;
 
@@ -298,31 +265,57 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
-            let peer_ts: u32 = Netcode.Load24(ptr, 1);
+            let server_ts: u32 = Netcode.Load24(ptr, 1);
+            let update_t = TimeSync.PeerToLocalTime_FromTS23(server_ts);
 
-            // FIXME
+            let dt: i32 = i32(t - update_t);
+            if (dt < 0) {
+                update_t = t;
+            }
 
-            TimeSync.OnTimeSample(t, peer_ts);
-            t = TimeSync.PeerToLocalTime_FromTS23(peer_ts);
-
+            const bytes_per_client: i32 = 19;
             const player_count: i32 = load<u8>(ptr, 4);
-            const expected_bytes: i32 = 5 + player_count * 8; // 64 bits per player
+            const expected_bytes: i32 = 5 + player_count * bytes_per_client;
 
             if (remaining < expected_bytes) {
                 consoleLog("Truncated server position");
                 break;
             }
 
-            offset += 5;
+            let pptr: usize = ptr + 5;
 
             for (let i: i32 = 0; i < player_count; ++i) {
-                let player_id: u8 = buffer[offset];
+                const player_id: u8 = load<u8>(pptr, 0);
                 if (player_map.has(player_id)) {
-                    let player: Player = player_map.get(player_id);
-                    player.LastPositionMessage.SetFromBuffer(t, buffer, offset);
+                    const player: Player = player_map.get(player_id);
+
+                    if (player.is_self) {
+                        continue;
+                    }
+
+                    player.server_x = Netcode.Convert16toX(load<u16>(pptr, 1));
+                    player.server_y = Netcode.Convert16toX(load<u16>(pptr, 3));
+                    player.server_vx = Netcode.Convert16toVX(load<i16>(pptr, 5));
+                    player.server_vy = Netcode.Convert16toVX(load<i16>(pptr, 7));
+
+                    const aa: u16 = load<u16>(pptr, 9);
+                    let ax: f32 = 0.0, ay: f32 = 0.0;
+                    if (aa != 0) {
+                        const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
+                        ax = Mathf.cos(angle);
+                        ay = Mathf.sin(angle);
+                    }
+
+                    player.ax = ax;
+                    player.ay = ay;
+
+                    const last_shot_x: f32 = Netcode.Convert16toX(load<u16>(pptr, 11));
+                    const last_shot_y: f32 = Netcode.Convert16toX(load<u16>(pptr, 13));
+                    const last_shot_vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 15));
+                    const last_shot_vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 17));
                 }
 
-                offset += 8;
+                pptr += bytes_per_client;
             }
 
             offset += expected_bytes;
@@ -487,34 +480,9 @@ export function Initialize(): void {
     map_prog = new RenderMapProgram();
     arrow_prog = new RenderArrowProgram();
     sun_prog = new RenderSunProgram();
+
+    Physics.InitializeCollisions();
 }
-
-
-//------------------------------------------------------------------------------
-// Weaponry
-
-class BulletWeapon {
-    x: f32 = 0;
-    y: f32 = 0;
-    vx: f32 = 0;
-    vy: f32 = 0;
-    team: u8 = 0;
-    angle0: f32 = 0;
-    t: u64 = 0;
-}
-
-class BombWeapon {
-    x: f32 = 0;
-    y: f32 = 0;
-    vx: f32 = 0;
-    vy: f32 = 0;
-    team: u8 = 0;
-    angle0: f32 = 0;
-    t: u64 = 0;
-}
-
-let BulletList: Array<BulletWeapon> = new Array<BulletWeapon>();
-let BombList: Array<BombWeapon> = new Array<BombWeapon>();
 
 
 //------------------------------------------------------------------------------
@@ -707,136 +675,6 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
 
 
 //------------------------------------------------------------------------------
-// Physics
-
-function SimulationStep(dt: f32, t: u64): void {
-    const players_count = player_list.length;
-
-    for (let i: i32 = 0; i < players_count; ++i) {
-        const player = player_list[i];
-
-        // TODO: Make slower if ship is larger
-
-        const mass: f32 = 1.0;
-        const inv_mass: f32 = 1.0 / mass;
-
-        let ax: f32 = player.ax * inv_mass;
-        let ay: f32 = player.ay * inv_mass;
-
-        let vx = player.vx + ax * dt;
-        let vy = player.vy + ay * dt;
-
-        let norm: f32 = f32(Math.sqrt(vx * vx + vy * vy));
-        let mag = norm;
-
-        if (norm > 0.0) {
-            const friction: f32 = 0.001;
-            const vf: f32 = friction * inv_mass;
-
-            if (mag > vf) {
-                mag -= vf;
-            } else {
-                mag = 0.0;
-            }
-
-            const limit: f32 = 1.0;
-            if (mag > limit) {
-                mag = limit;
-            }
-
-            mag /= norm;
-            vx *= mag;
-            vy *= mag;
-
-            player.vx = vx;
-            player.vy = vy;
-
-            player.x += vx * dt;
-            player.y += vy * dt;
-
-            if (player.x >= Netcode.kMapWidth) {
-                player.x -= Netcode.kMapWidth;
-            } else if (player.x < 0.0) {
-                player.x += Netcode.kMapWidth;
-            }
-            if (player.y >= Netcode.kMapWidth) {
-                player.y -= Netcode.kMapWidth;
-            } else if (player.y < 0.0) {
-                player.y += Netcode.kMapWidth;
-            }
-        }
-    }
-
-    for (let i: i32 = 0; i < BombList.length; ++i) {
-        const bomb = BombList[i];
-
-        bomb.x += bomb.vx * dt;
-        bomb.y += bomb.vy * dt;
-
-        if (bomb.x >= Netcode.kMapWidth) {
-            bomb.x -= Netcode.kMapWidth;
-        } else if (bomb.x < 0.0) {
-            bomb.x += Netcode.kMapWidth;
-        }
-        if (bomb.y >= Netcode.kMapWidth) {
-            bomb.y -= Netcode.kMapWidth;
-        } else if (bomb.y < 0.0) {
-            bomb.y += Netcode.kMapWidth;
-        }
-
-        if (i32(t - bomb.t) > 10_000 * 4) {
-            BombList[i] = BombList[BombList.length - 1];
-            BombList.length--;
-            --i;
-        }
-    }
-
-    for (let i: i32 = 0; i < BulletList.length; ++i) {
-        const bullet = BulletList[i];
-
-        bullet.x += bullet.vx * dt;
-        bullet.y += bullet.vy * dt;
-
-        if (bullet.x >= Netcode.kMapWidth) {
-            bullet.x -= Netcode.kMapWidth;
-        } else if (bullet.x < 0.0) {
-            bullet.x += Netcode.kMapWidth;
-        }
-        if (bullet.y >= Netcode.kMapWidth) {
-            bullet.y -= Netcode.kMapWidth;
-        } else if (bullet.y < 0.0) {
-            bullet.y += Netcode.kMapWidth;
-        }
-
-        if (i32(t - bullet.t) > 10_000 * 4) {
-            BulletList[i] = BulletList[BulletList.length - 1];
-            BulletList.length--;
-            --i;
-        }
-    }
-}
-
-let last_t: u64 = 0;
-
-function Physics(t: u64): void {
-    let dt: i32 = i32(t - last_t);
-
-    const step: i32 = 40;
-
-    while (dt >= step) {
-        SimulationStep(f32(step) * 0.25, last_t);
-        dt -= step;
-        last_t += step;
-    }
-
-    if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25, last_t);
-        last_t += dt;
-    }
-}
-
-
-//------------------------------------------------------------------------------
 // Position Update
 
 let last_position_send: u64 = 0;
@@ -874,10 +712,8 @@ function SendPosition(t: u64): void {
 
     store<u16>(ptr, Netcode.ConvertXto16(temp_self!.x), 4);
     store<u16>(ptr, Netcode.ConvertXto16(temp_self!.y), 6);
-
     store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vx), 8);
     store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
-
     store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
 
     sendUnreliable(buffer);
@@ -929,60 +765,9 @@ export function RenderFrame(
         temp_self!.is_self = true;
     }
 
-    Physics(t);
+    Physics.SimulateTo(t);
 
     SendPosition(t);
-
-    let sx: f32 = 0, sy: f32 = 0;
-    if (temp_self != null) {
-        sx = temp_self!.x;
-        sy = temp_self!.y;
-
-        const weapon_dt = i64(t - hack_last_bullet_fire);
-        if (weapon_dt > 500 * 4) {
-            let vx = temp_self!.vx;
-            let vy = temp_self!.vy;
-
-            if (vx == 0.0 && vy == 0.0) {
-            } else {
-                const bullet_speed: f32 = 0.5;
-
-                const mag: f32 = Mathf.sqrt(vx * vx + vy * vy);
-                const vfactor = bullet_speed / mag;
-                vx *= vfactor;
-                vy *= vfactor;
-
-                if (hack_bomb_counter == 0) {
-                    const bomb = new BombWeapon;
-                    bomb.vx = temp_self!.vx + vx;
-                    bomb.vy = temp_self!.vy + vy;
-                    bomb.x = temp_self!.x;
-                    bomb.y = temp_self!.y;
-                    bomb.t = t;
-                    bomb.team = temp_self!.team;
-                    bomb.angle0 = Mathf.random() * 3.14159 * 2.0;
-                    BombList.push(bomb);
-                } else {
-                    const bullet = new BulletWeapon;
-                    bullet.vx = temp_self!.vx + vx;
-                    bullet.vy = temp_self!.vy + vy;
-                    bullet.x = temp_self!.x;
-                    bullet.y = temp_self!.y;
-                    bullet.t = t;
-                    bullet.team = temp_self!.team;
-                    bullet.angle0 = Mathf.random() * 3.14159 * 2.0;
-                    BulletList.push(bullet);
-                }
-
-                hack_bomb_counter++;
-                if (hack_bomb_counter >= 4) {
-                    hack_bomb_counter = 0;
-                }
-            }
-
-            hack_last_bullet_fire = t;
-        }
-    }
 
     const origin_x = ObjectToScreen(0.0, sx);
     const origin_y = ObjectToScreen(0.0, sy);
