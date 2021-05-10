@@ -56,7 +56,7 @@ function preInstantiate(imports) {
 
   function getString(memory, ptr) {
     if (!memory) return "<yet unknown>";
-    return getStringImpl(memory.buffer, ptr);
+    return getStringImpl(memory["buffer"], ptr);
   }
 
   // add common imports used by stdlib for convenience
@@ -82,13 +82,13 @@ const F_NOEXPORTRUNTIME = function() { throw Error(E_NOEXPORTRUNTIME); };
 /** Prepares the final module once instantiation is complete. */
 function postInstantiate(extendedExports, instance) {
   const exports = instance.exports;
-  const memory = exports.memory;
-  const table = exports.table;
-  const __new = exports.__new || F_NOEXPORTRUNTIME;
-  const __pin = exports.__pin || F_NOEXPORTRUNTIME;
-  const __unpin = exports.__unpin || F_NOEXPORTRUNTIME;
-  const __collect = exports.__collect || F_NOEXPORTRUNTIME;
-  const __rtti_base = exports.__rtti_base || ~0; // oob if not present
+  const memory = exports["memory"];
+  const table = exports["table"];
+  const __new = exports["__new"] || F_NOEXPORTRUNTIME;
+  const __pin = exports["__pin"] || F_NOEXPORTRUNTIME;
+  const __unpin = exports["__unpin"] || F_NOEXPORTRUNTIME;
+  const __collect = exports["__collect"] || F_NOEXPORTRUNTIME;
+  const __rtti_base = exports["__rtti_base"] || ~0; // oob if not present
 
   extendedExports["__new"] = __new;
   extendedExports["__pin"] = __pin;
@@ -97,7 +97,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets the runtime type info for the given id. */
   function getInfo(id) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const count = U32[__rtti_base >>> 2];
     if ((id >>>= 0) >= count) throw Error(`invalid id: ${id}`);
     return U32[(__rtti_base + 4 >>> 2) + id * 2];
@@ -112,7 +112,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets the runtime base id for the given id. */
   function getBase(id) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const count = U32[__rtti_base >>> 2];
     if ((id >>>= 0) >= count) throw Error(`invalid id: ${id}`);
     return U32[(__rtti_base + 4 >>> 2) + id * 2 + 1];
@@ -133,7 +133,7 @@ function postInstantiate(extendedExports, instance) {
     if (str == null) return 0;
     const length = str.length;
     const ptr = __new(length << 1, STRING_ID);
-    const U16 = new Uint16Array(memory.buffer);
+    const U16 = new Uint16Array(memory["buffer"]);
     for (var i = 0, p = ptr >>> 1; i < length; ++i) U16[p + i] = str.charCodeAt(i);
     return ptr;
   }
@@ -143,7 +143,7 @@ function postInstantiate(extendedExports, instance) {
   /** Reads a string from the module's memory by its pointer. */
   function __getString(ptr) {
     if (!ptr) return null;
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const id = new Uint32Array(buffer)[ptr + ID_OFFSET >>> 2];
     if (id !== STRING_ID) throw Error(`not a string: ${ptr}`);
     return getStringImpl(buffer, ptr);
@@ -153,7 +153,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets the view matching the specified alignment, signedness and floatness. */
   function getView(alignLog2, signed, float) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     if (float) {
       switch (alignLog2) {
         case 2: return new Float32Array(buffer);
@@ -183,7 +183,7 @@ function postInstantiate(extendedExports, instance) {
       __pin(buf);
       const arr = __new(info & ARRAY ? ARRAY_SIZE : ARRAYBUFFERVIEW_SIZE, id);
       __unpin(buf);
-      const U32 = new Uint32Array(memory.buffer);
+      const U32 = new Uint32Array(memory["buffer"]);
       U32[arr + ARRAYBUFFERVIEW_BUFFER_OFFSET >>> 2] = buf;
       U32[arr + ARRAYBUFFERVIEW_DATASTART_OFFSET >>> 2] = buf;
       U32[arr + ARRAYBUFFERVIEW_DATALENGTH_OFFSET >>> 2] = length << align;
@@ -206,7 +206,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets a live view on an array's values in the module's memory. Infers the array type from RTTI. */
   function __getArrayView(arr) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const id = U32[arr + ID_OFFSET >>> 2];
     const info = getArrayInfo(id);
     const align = getValueAlign(info);
@@ -234,7 +234,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Copies an ArrayBuffer's value from the module's memory. */
   function __getArrayBuffer(ptr) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const length = new Uint32Array(buffer)[ptr + SIZE_OFFSET >>> 2];
     return buffer.slice(ptr, ptr + length);
   }
@@ -248,7 +248,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets a live view on a typed array's values in the module's memory. */
   function getTypedArrayView(Type, alignLog2, ptr) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const U32 = new Uint32Array(buffer);
     const bufPtr = U32[ptr + ARRAYBUFFERVIEW_DATASTART_OFFSET >>> 2];
     return new Type(buffer, bufPtr, U32[bufPtr + SIZE_OFFSET >>> 2] >>> alignLog2);
@@ -282,7 +282,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Tests whether an object is an instance of the class represented by the specified base id. */
   function __instanceof(ptr, baseId) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     let id = U32[ptr + ID_OFFSET >>> 2];
     if (id <= U32[__rtti_base >>> 2]) {
       do {
