@@ -90,10 +90,10 @@ function postInstantiate(extendedExports, instance) {
   const __collect = exports.__collect || F_NOEXPORTRUNTIME;
   const __rtti_base = exports.__rtti_base || ~0; // oob if not present
 
-  extendedExports.__new = __new;
-  extendedExports.__pin = __pin;
-  extendedExports.__unpin = __unpin;
-  extendedExports.__collect = __collect;
+  extendedExports["__new"] = __new;
+  extendedExports["__pin"] = __pin;
+  extendedExports["__unpin"] = __unpin;
+  extendedExports["__collect"] = __collect;
 
   /** Gets the runtime type info for the given id. */
   function getInfo(id) {
@@ -138,7 +138,7 @@ function postInstantiate(extendedExports, instance) {
     return ptr;
   }
 
-  extendedExports.__newString = __newString;
+  extendedExports["__newString"] = __newString;
 
   /** Reads a string from the module's memory by its pointer. */
   function __getString(ptr) {
@@ -149,7 +149,7 @@ function postInstantiate(extendedExports, instance) {
     return getStringImpl(buffer, ptr);
   }
 
-  extendedExports.__getString = __getString;
+  extendedExports["__getString"] = __getString;
 
   /** Gets the view matching the specified alignment, signedness and floatness. */
   function getView(alignLog2, signed, float) {
@@ -202,7 +202,7 @@ function postInstantiate(extendedExports, instance) {
     return result;
   }
 
-  extendedExports.__newArray = __newArray;
+  extendedExports["__newArray"] = __newArray;
 
   /** Gets a live view on an array's values in the module's memory. Infers the array type from RTTI. */
   function __getArrayView(arr) {
@@ -219,7 +219,7 @@ function postInstantiate(extendedExports, instance) {
     return getView(align, info & VAL_SIGNED, info & VAL_FLOAT).subarray(buf >>>= align, buf + length);
   }
 
-  extendedExports.__getArrayView = __getArrayView;
+  extendedExports["__getArrayView"] = __getArrayView;
 
   /** Copies an array's values from the module's memory. Infers the array type from RTTI. */
   function __getArray(arr) {
@@ -230,7 +230,7 @@ function postInstantiate(extendedExports, instance) {
     return out;
   }
 
-  extendedExports.__getArray = __getArray;
+  extendedExports["__getArray"] = __getArray;
 
   /** Copies an ArrayBuffer's value from the module's memory. */
   function __getArrayBuffer(ptr) {
@@ -239,7 +239,7 @@ function postInstantiate(extendedExports, instance) {
     return buffer.slice(ptr, ptr + length);
   }
 
-  extendedExports.__getArrayBuffer = __getArrayBuffer;
+  extendedExports["__getArrayBuffer"] = __getArrayBuffer;
 
   /** Copies a typed array's values from the module's memory. */
   function getTypedArray(Type, alignLog2, ptr) {
@@ -293,11 +293,11 @@ function postInstantiate(extendedExports, instance) {
     return false;
   }
 
-  extendedExports.__instanceof = __instanceof;
+  extendedExports["__instanceof"] = __instanceof;
 
   // Pull basic exports to extendedExports so code in preInstantiate can use them
-  extendedExports.memory = extendedExports.memory || memory;
-  extendedExports.table  = extendedExports.table  || table;
+  extendedExports["memory"] = extendedExports["memory"] || memory;
+  extendedExports["table"]  = extendedExports["table"]  || table;
 
   // Demangle exports and provide the usual utility on the prototype
   return demangle(exports, extendedExports);
