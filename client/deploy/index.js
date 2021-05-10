@@ -1,5 +1,4 @@
-//import { initASWebGLue, ASWebGLReady } from './ASWebGLue.js';
-import { initASWebGLue, ASWebGLReady } from './ASWebGLue2.js'; // No try..catch
+import { initASWebGLue, ASWebGLReady } from './ASWebGLue2.js';
 import * as loader from './loader.esm.js'
 
 const ClientSessionId = Math.random().toString(36).substr(2, 9);
