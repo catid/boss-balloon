@@ -14,7 +14,7 @@
     "genkey": "openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 100 -nodes",
     "asbuild:watch": "nodemon --ext ts -w client -x npm run asbuild:client_debug",
     "server:watch": "nodemon --ext ts -w client -x node server/index.js",
-    "minify": "node scripts/minify.js"
+    "client": "npx google-closure-compiler --js client/deploy/index.js client/deploy/loader.esm.js client/deploy/ASWebGLue2.js --js_output_file=client/deploy/bossballoon.js --strict_mode_input=false --compilation_level ADVANCED"
   },
   "repository": {
     "type": "git",
