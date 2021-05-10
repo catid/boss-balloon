@@ -34,6 +34,7 @@
   "devDependencies": {
     "as-3d-math": "0.0.1",
     "as-bind": "^0.6.1",
+    "node-minify": "^3.6.0",
     "as-bitray": "^2.4.8",
     "assemblyscript": "^0.18.27",
     "assemblyscript-json": "^1.0.0",
