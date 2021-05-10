@@ -51,13 +51,13 @@ function StopWebsocket() {
 }
 
 function OnConnectionOpen() {
-    wasmExports.OnConnectionOpen(performance.now());
+    wasmExports["OnConnectionOpen"](performance.now());
 
     timeSyncInterval = 100;
     var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
         syncTimer = setTimeout(() => {
-            wasmExports.SendTimeSync();
+            wasmExports["SendTimeSync"]();
 
             dispatchTimeSync();
         }, timeSyncInterval + variance);
@@ -69,7 +69,7 @@ function OnConnectionOpen() {
     dispatchTimeSync();
 
     reliableSendTimer = setInterval(() => {
-        wasmExports.OnReliableSendTimer();
+        wasmExports["OnReliableSendTimer"]();
     }, 100);
 }
 
@@ -145,7 +145,7 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onopen:', webrtc_unreliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports.OnConnectionOpen(performance.now());
+            wasmExports["OnConnectionOpen"](performance.now());
         }
     };
     webrtc_unreliable.onerror = ev => {
@@ -153,7 +153,7 @@ function StartRTCPeerConnection(on_offer) {
     };
     webrtc_unreliable.onclose = ev => {
         //console.log('onclose:', webrtc_unreliable.readyState, ev);
-        wasmExports.OnConnectionClose();
+        wasmExports["OnConnectionClose"]();
         StopWebsocket();
         StopWebRTC();
     };
@@ -162,12 +162,12 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onmessage:', webrtc_unreliable.readyState, ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
 
-        wasmExports.OnConnectionUnreliableData(recv_msec, dataRef);
+        wasmExports["OnConnectionUnreliableData"](recv_msec, dataRef);
 
         // Release resource
-        wasmExports.__unpin(dataRef);
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_unreliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_unreliable.readyState, ev);
@@ -190,7 +190,7 @@ function StartRTCPeerConnection(on_offer) {
     };
     webrtc_reliable.onclose = ev => {
         //console.log('onclose:', webrtc_reliable.readyState, ev);
-        wasmExports.OnConnectionClose();
+        wasmExports["OnConnectionClose"]();
         StopWebsocket();
         StopWebRTC();
     };
@@ -198,12 +198,12 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onmessage:', webrtc_reliable.readyState, ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
 
-        wasmExports.OnConnectionReliableData(dataRef);
+        wasmExports["OnConnectionReliableData"](dataRef);
 
         // Release resource
-        wasmExports.__unpin(dataRef);
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_reliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_reliable.readyState, ev);
@@ -412,7 +412,7 @@ function renderFrame() {
     }
 
     // Render using wasm
-    wasmExports.RenderFrame(performance.now(), finger_x, finger_y, canvas_w, canvas_h);
+    wasmExports["RenderFrame"](performance.now(), finger_x, finger_y, canvas_w, canvas_h);
 
     requestAnimationFrame(renderFrame);
 }
@@ -425,7 +425,7 @@ let wasmImports = {};
 wasmImports["netcode"] = {};
 wasmImports["netcode"]["consoleLog"] = (m) => {
     // Make a copy because the memory may have moved by the next tick
-    var copy = wasmExports.__getString(m);
+    var copy = wasmExports["__getString"](m);
     //console.log(copy); // sync version
     setTimeout(() => { console.log(copy); }, 50); // async version
 };
@@ -435,16 +435,16 @@ wasmImports["netcode"]["getMilliseconds"] = () => {
 wasmImports["client"] = {};
 wasmImports["client"]["sendReliable"] = (buffer) => {
     if (webrtc_reliable != null) {
-        webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
+        webrtc_reliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
 wasmImports["client"]["sendUnreliable"] = (buffer) => {
     if (webrtc_unreliable != null) {
-        webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
+        webrtc_unreliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
 wasmImports["client"]["playMusic"] = (name) => {
-    var copy = wasmExports.__getString(name);
+    var copy = wasmExports["__getString"](name);
     setTimeout(() => {
         if (ActiveMusic != copy) {
             var old_music = ActiveMusic;
@@ -481,7 +481,7 @@ wasmImports["client"]["playMusic"] = (name) => {
     }, 0);
 };
 wasmImports["client"]["playSFX"] = (name) => {
-    var copy = wasmExports.__getString(name);
+    var copy = wasmExports["__getString"](name);
     setTimeout(() => {
         if (can_use_audio) {
             SoundEffects[copy].pause();
@@ -493,7 +493,7 @@ wasmImports["client"]["serverLoginGood"] = () => {
     console.log("LoginGood");
 };
 wasmImports["client"]["serverLoginBad"] = (reason) => {
-    var copy = wasmExports.__getString(reason);
+    var copy = wasmExports["__getString"](reason);
     console.error("LoginBad:", copy);
 };
 wasmImports["env"] = {};
@@ -518,7 +518,7 @@ function startRender(wasm_file) {
 
             ASWebGLReady(obj, importObject);
 
-            wasmExports.Initialize();
+            wasmExports["Initialize"]();
 
             StartWebsocket();
 

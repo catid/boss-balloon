@@ -60,18 +60,18 @@ function preInstantiate(imports) {
   }
 
   // add common imports used by stdlib for convenience
-  const env = (imports.env = imports.env || {});
-  env.abort = env.abort || function abort(msg, file, line, colm) {
-    const memory = extendedExports.memory || env.memory; // prefer exported, otherwise try imported
+  const env = (imports["env"] = imports["env"] || {});
+  env["abort"] = env["abort"] || function abort(msg, file, line, colm) {
+    const memory = extendedExports["memory"] || env["memory"]; // prefer exported, otherwise try imported
     throw Error(`abort: ${getString(memory, msg)} at ${getString(memory, file)}:${line}:${colm}`);
   };
-  env.trace = env.trace || function trace(msg, n, ...args) {
-    const memory = extendedExports.memory || env.memory;
+  env["trace"] = env["trace"] || function trace(msg, n, ...args) {
+    const memory = extendedExports["memory"] || env["memory"];
     console.log(`trace: ${getString(memory, msg)}${n ? " " : ""}${args.slice(0, n).join(", ")}`);
   };
-  env.seed = env.seed || Date.now;
-  imports.Math = imports.Math || Math;
-  imports.Date = imports.Date || Date;
+  env["seed"] = env["seed"] || Date.now;
+  imports["Math"] = imports["Math"] || Math;
+  imports["Date"] = imports["Date"] || Date;
 
   return extendedExports;
 }

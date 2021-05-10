@@ -8,11 +8,11 @@ export function ASWebGLReady(wasm_obj, importObject) {
     console.error("ASWebGLReady requires import object as 2nd parameter");
     return;
   }
-  importObject["WebGL"]["WEBGL_READY = true;
+  importObject["WebGL"]["WEBGL_READY"] = true;
   console.log("=========================");
   console.log(wasm_obj.instance.exports);
   console.log(wasm_obj.instance.exports["__rtti_base"]);
-  importObject["WebGL"]["RTTI_BASE = wasm_obj.instance.exports["__rtti_base"];
+  importObject["WebGL"]["RTTI_BASE"] = wasm_obj.instance.exports["__rtti_base"];
 }
 
 export function initASWebGLue(importObject) {
@@ -282,7 +282,7 @@ export function initASWebGLue(importObject) {
     WebGL.contextArray[ctx].blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
   }
 
-  const bufferdata"] = (ctx, target, data, usage) => {
+  const bufferdata = (ctx, target, data, usage) => {
     WebGL.contextArray[ctx].bufferData(target, WebGL.getArrayView(data), usage);
   }
 
