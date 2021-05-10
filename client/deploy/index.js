@@ -238,8 +238,8 @@ function StartWebsocket() {
             StartRTCPeerConnection((offer) => {
                 if (ws_conn != null) {
                     ws_conn.send(JSON.stringify({
-                        type: "offer",
-                        offer: offer
+                        "type": "offer",
+                        "offer": offer
                     }));
                 } else {
                     StopWebRTC();
@@ -271,14 +271,14 @@ function StartWebsocket() {
             if (m.type == "answer" && webrtc_conn != null) {
                 //console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
                 webrtc_conn.setRemoteDescription(new RTCSessionDescription({
-                    type: "answer",
-                    sdp: m.sdp
+                    "type": "answer",
+                    "sdp": m.sdp
                 }));
             } else if (m.type == "candidate" && webrtc_conn != null) {
                 //console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
                 webrtc_conn.addIceCandidate(new RTCIceCandidate({
-                    candidate: m.candidate,
-                    sdpMid: m.mid
+                    "candidate": m.candidate,
+                    "sdpMid": m.mid
                 }));
             }
         } catch (err) {
