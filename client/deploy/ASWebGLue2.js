@@ -456,8 +456,8 @@ export function initASWebGLue(importObject) {
   // delete the buffer object
   importObject.WebGL.deleteBuffer = (ctx, buffer) => {
     try {
-      WebGL.contextArray[ctx].deleteBuffer(this.bufferArray[buffer]);
-      this.bufferArray[buffer] = null;
+      WebGL.contextArray[ctx].deleteBuffer(WebGL.bufferArray[buffer]);
+      WebGL.bufferArray[buffer] = null;
     } catch (err) {
       console.log("deleteBuffer error");
       console.error(err);
@@ -467,8 +467,8 @@ export function initASWebGLue(importObject) {
   // delete the frame buffer object
   importObject.WebGL.deleteFramebuffer = (ctx, frame_buffer) => {
     try {
-      WebGL.contextArray[ctx].deleteFramebuffer(this.framebufferArray[frame_buffer]);
-      this.framebufferArray[frame_buffer] = null;
+      WebGL.contextArray[ctx].deleteFramebuffer(WebGL.framebufferArray[frame_buffer]);
+      WebGL.framebufferArray[frame_buffer] = null;
     } catch (err) {
       console.log("deleteFramebuffer error");
       console.error(err);
@@ -478,8 +478,8 @@ export function initASWebGLue(importObject) {
   // delete the render buffer object
   importObject.WebGL.deleteRenderbuffer = (ctx, render_buffer) => {
     try {
-      WebGL.contextArray[ctx].deleteRenderbuffer(this.renderBufferArray[render_buffer]);
-      this.renderBufferArray[render_buffer] = null;
+      WebGL.contextArray[ctx].deleteRenderbuffer(WebGL.renderBufferArray[render_buffer]);
+      WebGL.renderBufferArray[render_buffer] = null;
     } catch (err) {
       console.log("deleteRenderbuffer error");
       console.error(err);
@@ -489,8 +489,8 @@ export function initASWebGLue(importObject) {
   // delete the program object
   importObject.WebGL.deleteProgram = (ctx, program) => {
     try {
-      WebGL.contextArray[ctx].deleteProgram(this.programArray[program]);
-      this.program[program] = null;
+      WebGL.contextArray[ctx].deleteProgram(WebGL.programArray[program]);
+      WebGL.program[program] = null;
     } catch (err) {
       console.log("deleteProgram error");
       console.error(err);
@@ -500,8 +500,8 @@ export function initASWebGLue(importObject) {
   // delete the shader object
   importObject.WebGL.deleteShader = (ctx, shader) => {
     try {
-      WebGL.contextArray[ctx].deleteShader(this.shaderArray[shader]);
-      this.shaderArray[shader] = null;
+      WebGL.contextArray[ctx].deleteShader(WebGL.shaderArray[shader]);
+      WebGL.shaderArray[shader] = null;
     } catch (err) {
       console.log("deleteShader error");
       console.error(err);
@@ -510,8 +510,8 @@ export function initASWebGLue(importObject) {
 
   importObject.WebGL.deleteTexture = (ctx, texture) => {
     try {
-      WebGL.contextArray[ctx].deleteShader(this.textureArray[texture]);
-      this.textureArray[texture] = null;
+      WebGL.contextArray[ctx].deleteShader(WebGL.textureArray[texture]);
+      WebGL.textureArray[texture] = null;
     } catch (err) {
       console.log("deleteTexture error");
       console.error(err);

@@ -103,7 +103,7 @@ function StartRTCPeerConnection(on_offer) {
         return;
     }
     //console.log("Starting WebRTC connection");
-    webrtc_conn = new RTCPeerConnection();
+    webrtc_conn = new RTCPeerConnection(null);
 /*
     webrtc_conn.onicecandidate = e => {
         //console.log("onicecandidate", e);
@@ -229,9 +229,7 @@ function StartRTCPeerConnection(on_offer) {
 // WebSocket
 
 function StartWebsocket() {
-    ws_conn = new WebSocket("wss://" + location.hostname + ":8443/bb/" + ClientSessionId, [], {
-        perMessageDeflate: false
-    });
+    ws_conn = new WebSocket("wss://" + location.hostname + ":8443/bb/" + ClientSessionId);
     
     ws_conn.onopen = (ev) => {
         console.log("WebSocket client connected");
@@ -272,16 +270,16 @@ function StartWebsocket() {
 
             if (m.type == "answer" && webrtc_conn != null) {
                 //console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
-                webrtc_conn.setRemoteDescription({
+                webrtc_conn.setRemoteDescription(new RTCSessionDescription({
                     type: "answer",
                     sdp: m.sdp
-                });
+                }));
             } else if (m.type == "candidate" && webrtc_conn != null) {
                 //console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
-                webrtc_conn.addIceCandidate({
+                webrtc_conn.addIceCandidate(new RTCIceCandidate({
                     candidate: m.candidate,
                     sdpMid: m.mid
-                });
+                }));
             }
         } catch (err) {
             console.error("Websocket message parse failed: err=", err);
@@ -304,8 +302,8 @@ function activate() {
     if (!is_active) {
         is_active = true;
         document.body.style.backgroundColor = "#444";
-        margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"));
-        margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"));
+        margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"), 10);
+        margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"), 10);
         if (can_use_audio) {
             MusicMap[ActiveMusic].play();
             MusicMap[ActiveMusic].loop = true;

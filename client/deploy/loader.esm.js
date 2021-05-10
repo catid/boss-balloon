@@ -400,9 +400,10 @@ export function demangle(exports, extendedExports = {}) {
             return elem(...args);
           }).original = elem;
         } else { // instance method
+          var thiz = this;
           (curr[name] = function(...args) { // !
             setArgumentsLength(args.length);
-            return elem(this[THIS], ...args);
+            return elem(thiz[THIS], ...args);
           }).original = elem;
         }
       }
