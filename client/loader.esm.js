@@ -56,22 +56,22 @@ function preInstantiate(imports) {
 
   function getString(memory, ptr) {
     if (!memory) return "<yet unknown>";
-    return getStringImpl(memory.buffer, ptr);
+    return getStringImpl(memory["buffer"], ptr);
   }
 
   // add common imports used by stdlib for convenience
-  const env = (imports.env = imports.env || {});
-  env.abort = env.abort || function abort(msg, file, line, colm) {
-    const memory = extendedExports.memory || env.memory; // prefer exported, otherwise try imported
+  const env = (imports["env"] = imports["env"] || {});
+  env["abort"] = env["abort"] || function abort(msg, file, line, colm) {
+    const memory = extendedExports["memory"] || env["memory"]; // prefer exported, otherwise try imported
     throw Error(`abort: ${getString(memory, msg)} at ${getString(memory, file)}:${line}:${colm}`);
   };
-  env.trace = env.trace || function trace(msg, n, ...args) {
-    const memory = extendedExports.memory || env.memory;
+  env["trace"] = env["trace"] || function trace(msg, n, ...args) {
+    const memory = extendedExports["memory"] || env["memory"];
     console.log(`trace: ${getString(memory, msg)}${n ? " " : ""}${args.slice(0, n).join(", ")}`);
   };
-  env.seed = env.seed || Date.now;
-  imports.Math = imports.Math || Math;
-  imports.Date = imports.Date || Date;
+  env["seed"] = env["seed"] || Date.now;
+  imports["Math"] = imports["Math"] || Math;
+  imports["Date"] = imports["Date"] || Date;
 
   return extendedExports;
 }
@@ -82,22 +82,22 @@ const F_NOEXPORTRUNTIME = function() { throw Error(E_NOEXPORTRUNTIME); };
 /** Prepares the final module once instantiation is complete. */
 function postInstantiate(extendedExports, instance) {
   const exports = instance.exports;
-  const memory = exports.memory;
-  const table = exports.table;
-  const __new = exports.__new || F_NOEXPORTRUNTIME;
-  const __pin = exports.__pin || F_NOEXPORTRUNTIME;
-  const __unpin = exports.__unpin || F_NOEXPORTRUNTIME;
-  const __collect = exports.__collect || F_NOEXPORTRUNTIME;
-  const __rtti_base = exports.__rtti_base || ~0; // oob if not present
+  const memory = exports["memory"];
+  const table = exports["table"];
+  const __new = exports["__new"] || F_NOEXPORTRUNTIME;
+  const __pin = exports["__pin"] || F_NOEXPORTRUNTIME;
+  const __unpin = exports["__unpin"] || F_NOEXPORTRUNTIME;
+  const __collect = exports["__collect"] || F_NOEXPORTRUNTIME;
+  const __rtti_base = exports["__rtti_base"] || ~0; // oob if not present
 
-  extendedExports.__new = __new;
-  extendedExports.__pin = __pin;
-  extendedExports.__unpin = __unpin;
-  extendedExports.__collect = __collect;
+  extendedExports["__new"] = __new;
+  extendedExports["__pin"] = __pin;
+  extendedExports["__unpin"] = __unpin;
+  extendedExports["__collect"] = __collect;
 
   /** Gets the runtime type info for the given id. */
   function getInfo(id) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const count = U32[__rtti_base >>> 2];
     if ((id >>>= 0) >= count) throw Error(`invalid id: ${id}`);
     return U32[(__rtti_base + 4 >>> 2) + id * 2];
@@ -112,7 +112,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets the runtime base id for the given id. */
   function getBase(id) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const count = U32[__rtti_base >>> 2];
     if ((id >>>= 0) >= count) throw Error(`invalid id: ${id}`);
     return U32[(__rtti_base + 4 >>> 2) + id * 2 + 1];
@@ -133,27 +133,27 @@ function postInstantiate(extendedExports, instance) {
     if (str == null) return 0;
     const length = str.length;
     const ptr = __new(length << 1, STRING_ID);
-    const U16 = new Uint16Array(memory.buffer);
+    const U16 = new Uint16Array(memory["buffer"]);
     for (var i = 0, p = ptr >>> 1; i < length; ++i) U16[p + i] = str.charCodeAt(i);
     return ptr;
   }
 
-  extendedExports.__newString = __newString;
+  extendedExports["__newString"] = __newString;
 
   /** Reads a string from the module's memory by its pointer. */
   function __getString(ptr) {
     if (!ptr) return null;
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const id = new Uint32Array(buffer)[ptr + ID_OFFSET >>> 2];
     if (id !== STRING_ID) throw Error(`not a string: ${ptr}`);
     return getStringImpl(buffer, ptr);
   }
 
-  extendedExports.__getString = __getString;
+  extendedExports["__getString"] = __getString;
 
   /** Gets the view matching the specified alignment, signedness and floatness. */
   function getView(alignLog2, signed, float) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     if (float) {
       switch (alignLog2) {
         case 2: return new Float32Array(buffer);
@@ -183,7 +183,7 @@ function postInstantiate(extendedExports, instance) {
       __pin(buf);
       const arr = __new(info & ARRAY ? ARRAY_SIZE : ARRAYBUFFERVIEW_SIZE, id);
       __unpin(buf);
-      const U32 = new Uint32Array(memory.buffer);
+      const U32 = new Uint32Array(memory["buffer"]);
       U32[arr + ARRAYBUFFERVIEW_BUFFER_OFFSET >>> 2] = buf;
       U32[arr + ARRAYBUFFERVIEW_DATASTART_OFFSET >>> 2] = buf;
       U32[arr + ARRAYBUFFERVIEW_DATALENGTH_OFFSET >>> 2] = length << align;
@@ -202,11 +202,11 @@ function postInstantiate(extendedExports, instance) {
     return result;
   }
 
-  extendedExports.__newArray = __newArray;
+  extendedExports["__newArray"] = __newArray;
 
   /** Gets a live view on an array's values in the module's memory. Infers the array type from RTTI. */
   function __getArrayView(arr) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     const id = U32[arr + ID_OFFSET >>> 2];
     const info = getArrayInfo(id);
     const align = getValueAlign(info);
@@ -219,7 +219,7 @@ function postInstantiate(extendedExports, instance) {
     return getView(align, info & VAL_SIGNED, info & VAL_FLOAT).subarray(buf >>>= align, buf + length);
   }
 
-  extendedExports.__getArrayView = __getArrayView;
+  extendedExports["__getArrayView"] = __getArrayView;
 
   /** Copies an array's values from the module's memory. Infers the array type from RTTI. */
   function __getArray(arr) {
@@ -230,16 +230,16 @@ function postInstantiate(extendedExports, instance) {
     return out;
   }
 
-  extendedExports.__getArray = __getArray;
+  extendedExports["__getArray"] = __getArray;
 
   /** Copies an ArrayBuffer's value from the module's memory. */
   function __getArrayBuffer(ptr) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const length = new Uint32Array(buffer)[ptr + SIZE_OFFSET >>> 2];
     return buffer.slice(ptr, ptr + length);
   }
 
-  extendedExports.__getArrayBuffer = __getArrayBuffer;
+  extendedExports["__getArrayBuffer"] = __getArrayBuffer;
 
   /** Copies a typed array's values from the module's memory. */
   function getTypedArray(Type, alignLog2, ptr) {
@@ -248,7 +248,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Gets a live view on a typed array's values in the module's memory. */
   function getTypedArrayView(Type, alignLog2, ptr) {
-    const buffer = memory.buffer;
+    const buffer = memory["buffer"];
     const U32 = new Uint32Array(buffer);
     const bufPtr = U32[ptr + ARRAYBUFFERVIEW_DATASTART_OFFSET >>> 2];
     return new Type(buffer, bufPtr, U32[bufPtr + SIZE_OFFSET >>> 2] >>> alignLog2);
@@ -282,7 +282,7 @@ function postInstantiate(extendedExports, instance) {
 
   /** Tests whether an object is an instance of the class represented by the specified base id. */
   function __instanceof(ptr, baseId) {
-    const U32 = new Uint32Array(memory.buffer);
+    const U32 = new Uint32Array(memory["buffer"]);
     let id = U32[ptr + ID_OFFSET >>> 2];
     if (id <= U32[__rtti_base >>> 2]) {
       do {
@@ -293,11 +293,11 @@ function postInstantiate(extendedExports, instance) {
     return false;
   }
 
-  extendedExports.__instanceof = __instanceof;
+  extendedExports["__instanceof"] = __instanceof;
 
   // Pull basic exports to extendedExports so code in preInstantiate can use them
-  extendedExports.memory = extendedExports.memory || memory;
-  extendedExports.table  = extendedExports.table  || table;
+  extendedExports["memory"] = extendedExports["memory"] || memory;
+  extendedExports["table"]  = extendedExports["table"]  || table;
 
   // Demangle exports and provide the usual utility on the prototype
   return demangle(exports, extendedExports);
@@ -400,9 +400,10 @@ export function demangle(exports, extendedExports = {}) {
             return elem(...args);
           }).original = elem;
         } else { // instance method
+          var thiz = this;
           (curr[name] = function(...args) { // !
             setArgumentsLength(args.length);
-            return elem(this[THIS], ...args);
+            return elem(thiz[THIS], ...args);
           }).original = elem;
         }
       }

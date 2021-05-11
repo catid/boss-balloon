@@ -51,25 +51,25 @@ function StopWebsocket() {
 }
 
 function OnConnectionOpen() {
-    wasmExports.OnConnectionOpen(performance.now());
+    wasmExports["OnConnectionOpen"](performance.now());
 
     timeSyncInterval = 100;
     var dispatchTimeSync = () => {
         var variance = Math.random() * 20 - 10;
         syncTimer = setTimeout(() => {
-            wasmExports.SendTimeSync();
+            wasmExports["SendTimeSync"]();
 
             dispatchTimeSync();
         }, timeSyncInterval + variance);
         timeSyncInterval *= 2;
-        if (timeSyncInterval > 1_000) {
-            timeSyncInterval = 1_000; // Steady state interval
+        if (timeSyncInterval > 1000) {
+            timeSyncInterval = 1000; // Steady state interval
         }
     };
     dispatchTimeSync();
 
     reliableSendTimer = setInterval(() => {
-        wasmExports.OnReliableSendTimer();
+        wasmExports["OnReliableSendTimer"]();
     }, 100);
 }
 
@@ -103,7 +103,7 @@ function StartRTCPeerConnection(on_offer) {
         return;
     }
     //console.log("Starting WebRTC connection");
-    webrtc_conn = new RTCPeerConnection();
+    webrtc_conn = new RTCPeerConnection(null);
 /*
     webrtc_conn.onicecandidate = e => {
         //console.log("onicecandidate", e);
@@ -145,7 +145,7 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onopen:', webrtc_unreliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports.OnConnectionOpen(performance.now());
+            wasmExports["OnConnectionOpen"](performance.now());
         }
     };
     webrtc_unreliable.onerror = ev => {
@@ -153,7 +153,7 @@ function StartRTCPeerConnection(on_offer) {
     };
     webrtc_unreliable.onclose = ev => {
         //console.log('onclose:', webrtc_unreliable.readyState, ev);
-        wasmExports.OnConnectionClose();
+        wasmExports["OnConnectionClose"]();
         StopWebsocket();
         StopWebRTC();
     };
@@ -162,12 +162,12 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onmessage:', webrtc_unreliable.readyState, ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
 
-        wasmExports.OnConnectionUnreliableData(recv_msec, dataRef);
+        wasmExports["OnConnectionUnreliableData"](recv_msec, dataRef);
 
         // Release resource
-        wasmExports.__unpin(dataRef);
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_unreliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_unreliable.readyState, ev);
@@ -190,7 +190,7 @@ function StartRTCPeerConnection(on_offer) {
     };
     webrtc_reliable.onclose = ev => {
         //console.log('onclose:', webrtc_reliable.readyState, ev);
-        wasmExports.OnConnectionClose();
+        wasmExports["OnConnectionClose"]();
         StopWebsocket();
         StopWebRTC();
     };
@@ -198,12 +198,12 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onmessage:', webrtc_reliable.readyState, ev);
 
         // Make a copy of the buffer into wasm memory
-        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, new Uint8Array(ev.data)));
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
 
-        wasmExports.OnConnectionReliableData(dataRef);
+        wasmExports["OnConnectionReliableData"](dataRef);
 
         // Release resource
-        wasmExports.__unpin(dataRef);
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_reliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_reliable.readyState, ev);
@@ -229,9 +229,7 @@ function StartRTCPeerConnection(on_offer) {
 // WebSocket
 
 function StartWebsocket() {
-    ws_conn = new WebSocket("wss://" + location.hostname + ":8443/bb/" + ClientSessionId, [], {
-        perMessageDeflate: false
-    });
+    ws_conn = new WebSocket("wss://" + location.hostname + ":8443/bb/" + ClientSessionId);
     
     ws_conn.onopen = (ev) => {
         console.log("WebSocket client connected");
@@ -240,8 +238,8 @@ function StartWebsocket() {
             StartRTCPeerConnection((offer) => {
                 if (ws_conn != null) {
                     ws_conn.send(JSON.stringify({
-                        type: "offer",
-                        offer: offer
+                        "type": "offer",
+                        "offer": offer
                     }));
                 } else {
                     StopWebRTC();
@@ -256,11 +254,11 @@ function StartWebsocket() {
         // FIXME: Remove this
         setTimeout(() => {
             location.reload();
-        }, 3_000);
+        }, 3000);
 
         setTimeout(() => {
             StartWebsocket();
-        }, 1_000);
+        }, 1000);
     };
     ws_conn.onerror = (ev) => {
         console.error("WebSocket error", ev);
@@ -272,16 +270,16 @@ function StartWebsocket() {
 
             if (m.type == "answer" && webrtc_conn != null) {
                 //console.log("Got peer answer: setRemoteDescription sdp=", m.sdp);
-                webrtc_conn.setRemoteDescription({
-                    type: "answer",
-                    sdp: m.sdp
-                });
+                webrtc_conn.setRemoteDescription(new RTCSessionDescription({
+                    "type": "answer",
+                    "sdp": m.sdp
+                }));
             } else if (m.type == "candidate" && webrtc_conn != null) {
                 //console.log("Got peer candidate: addIceCandidate sdp=", m.sdp, " mid=", m.mid);
-                webrtc_conn.addIceCandidate({
-                    candidate: m.candidate,
-                    sdpMid: m.mid
-                });
+                webrtc_conn.addIceCandidate(new RTCIceCandidate({
+                    "candidate": m.candidate,
+                    "sdpMid": m.mid
+                }));
             }
         } catch (err) {
             console.error("Websocket message parse failed: err=", err);
@@ -304,8 +302,8 @@ function activate() {
     if (!is_active) {
         is_active = true;
         document.body.style.backgroundColor = "#444";
-        margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"));
-        margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"));
+        margin_left = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-left"), 10);
+        margin_top = parseInt(window.getComputedStyle(cnvs.parentNode).getPropertyValue("margin-top"), 10);
         if (can_use_audio) {
             MusicMap[ActiveMusic].play();
             MusicMap[ActiveMusic].loop = true;
@@ -414,7 +412,7 @@ function renderFrame() {
     }
 
     // Render using wasm
-    wasmExports.RenderFrame(performance.now(), finger_x, finger_y, canvas_w, canvas_h);
+    wasmExports["RenderFrame"](performance.now(), finger_x, finger_y, canvas_w, canvas_h);
 
     requestAnimationFrame(renderFrame);
 }
@@ -423,95 +421,91 @@ function renderFrame() {
 //------------------------------------------------------------------------------
 // WebAssembly Frame Loop
 
-const wasmImports = {
-    common: {
-        jsConsoleLog: (m) => {
-            // Make a copy because the memory may have moved by the next tick
-            var copy = wasmExports.__getString(m);
-            //console.log(copy); // sync version
-            setTimeout(() => { console.log(copy); }, 50); // async version
-        },
-        jsGetMilliseconds: () => {
-            return performance.now();
-        }
-    },
-    client: {
-        jsSendReliable: (buffer) => {
-            if (webrtc_reliable != null) {
-                webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
-            }
-        },
-        jsSendUnreliable: (buffer) => {
-            if (webrtc_unreliable != null) {
-                webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
-            }
-        },
-        jsPlayMusic: (name) => {
-            var copy = wasmExports.__getString(name);
-            setTimeout(() => {
-                if (ActiveMusic != copy) {
-                    var old_music = ActiveMusic;
-                    var anim_out_fn = () => {
-                        var new_volume = MusicMap[old_music].volume - 0.1;
-                        if (new_volume <= 0.0) {
-                            MusicMap[old_music].pause();
-                        } else {
-                            MusicMap[old_music].volume = new_volume;
-                            setTimeout(anim_out_fn, 100);
-                        }
-                    };
-                    anim_out_fn();
-                }
-                ActiveMusic = copy;
-                if (can_use_audio) {
-                    var new_music = ActiveMusic;
-                    MusicMap[new_music].volume = 0.1;
-                    if (is_active) {
-                        MusicMap[new_music].play();
-                    }
-                    var anim_in_fn = () => {
-                        var new_volume = MusicMap[new_music].volume + 0.1;
-                        if (new_volume < 1.0) {
-                            MusicMap[new_music].volume = new_volume;
-                            setTimeout(anim_in_fn, 100);
-                        } else {
-                            MusicMap[new_music].volume = 1.0;
-                        }
-                    };
-                    anim_in_fn();
-                    MusicMap[ActiveMusic].loop = true;
-                }
-            }, 0);
-        },
-        jsPlaySFX: (name) => {
-            var copy = wasmExports.__getString(name);
-            setTimeout(() => {
-                if (can_use_audio) {
-                    SoundEffects[copy].pause();
-                    SoundEffects[copy].play();
-                }
-            }, 0);
-        },
-        jsServerLoginGood: () => {
-            console.log("LoginGood");
-        },
-        jsServerLoginBad: (reason) => {
-            var copy = wasmExports.__getString(reason);
-            console.error("LoginBad:", copy);
-        }
+let wasmImports = {};
+wasmImports["common"] = {};
+wasmImports["common"]["jsConsoleLog"] = (m) => {
+    // Make a copy because the memory may have moved by the next tick
+    var copy = wasmExports["__getString"](m);
+    //console.log(copy); // sync version
+    setTimeout(() => { console.log(copy); }, 50); // async version
+};
+wasmImports["common"]["jsGetMilliseconds"] = () => {
+    return performance.now();
+};
+wasmImports["client"] = {};
+wasmImports["client"]["jsSendReliable"] = (buffer) => {
+    if (webrtc_reliable != null) {
+        webrtc_reliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
+wasmImports["client"]["jsSendUnreliable"] = (buffer) => {
+    if (webrtc_unreliable != null) {
+        webrtc_unreliable.send(wasmExports["__getUint8ArrayView"](buffer));
+    }
+};
+wasmImports["client"]["jsPlayMusic"] = (name) => {
+    var copy = wasmExports["__getString"](name);
+    setTimeout(() => {
+        if (ActiveMusic != copy) {
+            var old_music = ActiveMusic;
+            var anim_out_fn = () => {
+                var new_volume = MusicMap[old_music].volume - 0.1;
+                if (new_volume <= 0.0) {
+                    MusicMap[old_music].pause();
+                } else {
+                    MusicMap[old_music].volume = new_volume;
+                    setTimeout(anim_out_fn, 100);
+                }
+            };
+            anim_out_fn();
+        }
+        ActiveMusic = copy;
+        if (can_use_audio) {
+            var new_music = ActiveMusic;
+            MusicMap[new_music].volume = 0.1;
+            if (is_active) {
+                MusicMap[new_music].play();
+            }
+            var anim_in_fn = () => {
+                var new_volume = MusicMap[new_music].volume + 0.1;
+                if (new_volume < 1.0) {
+                    MusicMap[new_music].volume = new_volume;
+                    setTimeout(anim_in_fn, 100);
+                } else {
+                    MusicMap[new_music].volume = 1.0;
+                }
+            };
+            anim_in_fn();
+            MusicMap[ActiveMusic].loop = true;
+        }
+    }, 0);
+};
+wasmImports["client"]["jsPlaySFX"] = (name) => {
+    var copy = wasmExports["__getString"](name);
+    setTimeout(() => {
+        if (can_use_audio) {
+            SoundEffects[copy].pause();
+            SoundEffects[copy].play();
+        }
+    }, 0);
+};
+wasmImports["client"]["jsServerLoginGood"] = () => {
+    console.log("LoginGood");
+};
+wasmImports["client"]["jsServerLoginBad"] = (reason) => {
+    var copy = wasmExports["__getString"](reason);
+    console.error("LoginBad:", copy);
+};
+wasmImports["env"] = {};
 
 function startRender(wasm_file) {
     // Linear memory
-    const memory = new WebAssembly.Memory({ initial: 10_000 });
+    const memory = new WebAssembly.Memory({ initial: 10000 });
 
     var importObject = {
-        ...wasmImports,
-        env: {
-            memory: memory
-        }
+        ...wasmImports
     };
+    importObject["env"]["memory"] = memory;
 
     initASWebGLue(importObject);
 
@@ -524,7 +518,7 @@ function startRender(wasm_file) {
 
             ASWebGLReady(obj, importObject);
 
-            wasmExports.Initialize();
+            wasmExports["Initialize"]();
 
             StartWebsocket();
 

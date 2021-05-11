@@ -10,10 +10,13 @@
     "asbuild:server_release": "asc server/server.ts --target server_release --runtime minimal --exportTable --exportRuntime --importMemory",
     "release": "npm run asbuild:client_release && npm run asbuild:server_release",
     "debug": "npm run asbuild:client_debug && npm run asbuild:server_debug",
-    "server": "node server/index.js",
+    "server": "pm2 start server/index.js --watch",
     "genkey": "openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 100 -nodes",
     "asbuild:watch": "nodemon --ext ts -w client -x npm run asbuild:client_debug",
-    "server:watch": "nodemon --ext ts -w client -x node server/index.js"
+    "server:watch": "nodemon --ext ts -w client -x node server/index.js",
+    "client": "npx google-closure-compiler --js client/deploy/index.js client/deploy/loader.esm.js client/deploy/ASWebGLue2.js --js_output_file=client/deploy/bossballoon.js --strict_mode_input=false --compilation_level ADVANCED",
+    "deploy": "./scripts/deploy.sh",
+    "ubuntu": "sudo apt install build-essential cmake"
   },
   "repository": {
     "type": "git",
@@ -29,13 +32,14 @@
   },
   "homepage": "https://github.com/catid/boss-balloon#readme",
   "dependencies": {
-    "@assemblyscript/loader": "^0.18.27"
+    "@assemblyscript/loader": "^0.18.27",
+    "express": "^4.17.1",
+    "node-datachannel": "^0.1.3"
   },
   "devDependencies": {
     "assemblyscript": "^0.18.27",
     "assemblyscript-json": "^1.0.0",
-    "express": "^4.17.1",
-    "node-datachannel": "murat-dogan/node-datachannel",
+    "google-closure-compiler": "^20210505.0.0",
     "nodemon": "^2.0.7",
     "rezidb": "^1.0.1",
     "ws": "^7.4.5"
