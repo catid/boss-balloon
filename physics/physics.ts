@@ -22,6 +22,9 @@ export const kMapFriction: f32 = 0.001;
 export const kPlayerVelocityLimit: f32 = 1.0;
 export const kBulletSpeed: f32 = 0.5;
 
+export const kBombRadius = 2.0;
+export const kBulletRadius = 20.0;
+
 export const kMapWidth: f32 = 32000.0; // map units
 
 export const kScreenToMapFactor: f32 = 1000.0;
@@ -162,6 +165,8 @@ function UpdatePlayerSize(p: PlayerCollider, server_ts: u64): void {
     }
 }
 
+// FIXME: Add player
+
 // Start resize sometime in the future
 export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {
     p.changes.push(new PlayerSizeChange(server_ts, size));
@@ -178,8 +183,9 @@ export class Projectile {
     vx: f32 = 0;
     vy: f32 = 0;
 
-    // Team for collision detection
+    // Team, radius for collision detection
     team: u8 = 0;
+    r: f32 = 0.0;
 
     // Initial fire time (for expiry)
     local_ts: u64 = 0;
@@ -233,8 +239,10 @@ function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
 
             if (is_bomb) {
                 BombList.push(pp);
+                pp.r = kBombRadius;
             } else {
                 BulletList.push(pp);
+                pp.r = kBulletRadius;
             }
         }
     }
@@ -286,6 +294,32 @@ function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
 export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
 export let ProjectileMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
 
+function PositionToPlayerMatrixTile(x: f32): u32 {
+    if (x <= 0.0) {
+        return 0;
+    }
+
+    let tx: u32 = u32(x) / kPlayerMatrixWidth;
+    if (tx >= kPlayerMatrixWidth) {
+        return kPlayerMatrixWidth - 1;
+    }
+
+    return tx;
+}
+
+function PositionToProjectileMatrixTile(x: f32): u32 {
+    if (x <= 0.0) {
+        return 0;
+    }
+
+    let tx: u32 = u32(x) / kProjectileMatrixWidth;
+    if (tx >= kProjectileMatrixWidth) {
+        return kProjectileMatrixWidth - 1;
+    }
+
+    return tx;
+}
+
 export function InitializeCollisions(): void {
     for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
         PlayerMatrix[i] = new Array<PlayerCollider>();
@@ -296,14 +330,8 @@ export function InitializeCollisions(): void {
 }
 
 function UpdatePlayerMatrix(p: PlayerCollider): void {
-    let tx: u32 = u32(p.x) / kPlayerMatrixWidth;
-    let ty: u32 = u32(p.y) / kPlayerMatrixWidth;
-    if (tx >= kPlayerMatrixWidth) {
-        tx = kPlayerMatrixWidth - 1;
-    }
-    if (ty >= kPlayerMatrixWidth) {
-        ty = kPlayerMatrixWidth - 1;
-    }
+    let tx: u32 = PositionToPlayerMatrixTile(p.x);
+    let ty: u32 = PositionToPlayerMatrixTile(p.y);
 
     let bin_index: u32 = tx + ty * kPlayerMatrixWidth;
     let new_bin = PlayerMatrix[bin_index];
@@ -328,14 +356,8 @@ function UpdatePlayerMatrix(p: PlayerCollider): void {
 }
 
 function UpdateProjectileMatrix(p: Projectile): void {
-    let tx: u32 = u32(p.x) / kProjectileMatrixWidth;
-    let ty: u32 = u32(p.y) / kProjectileMatrixWidth;
-    if (tx >= kProjectileMatrixWidth) {
-        tx = kProjectileMatrixWidth - 1;
-    }
-    if (ty >= kProjectileMatrixWidth) {
-        ty = kProjectileMatrixWidth - 1;
-    }
+    let tx: u32 = PositionToProjectileMatrixTile(p.x);
+    let ty: u32 = PositionToProjectileMatrixTile(p.y);
 
     let bin_index: u32 = tx + ty * kProjectileMatrixWidth;
     let new_bin = ProjectileMatrix[bin_index];
@@ -359,8 +381,66 @@ function UpdateProjectileMatrix(p: Projectile): void {
     new_bin.push(p);
 }
 
+function MatrixRemovePlayer(p: PlayerCollider): void {
+    if (p.collider_matrix_index != -1) {
+        let old_bin = p.collider_matrix_bin;
+        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
+        old_bin.length--;
+        p.collider_matrix_index = -1;
+    }
+}
+
+function MatrixRemoveProjectile(p: Projectile): void {
+    if (p.collider_matrix_index != -1) {
+        let old_bin = p.collider_matrix_bin;
+        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
+        old_bin.length--;
+        p.collider_matrix_index = -1;
+    }
+}
+
+function IsColliding(p: PlayerCollider, projectile: Projectile): bool {
+    const x: f32 = p.x - projectile.x;
+    const y: f32 = p.y - projectile.y;
+    const r: f32 = projectile.r + p.r;
+    return x*x + y*y < r*r;
+
+}
+
 function CheckProjectileCollisions(): void {
-    // FIXME
+    const players_count: i32 = PlayerColliderList.length;
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = PlayerColliderList[i];
+
+        const x0: u32 = PositionToProjectileMatrixTile(p.x - p.r);
+        const y0: u32 = PositionToProjectileMatrixTile(p.y - p.r);
+
+        const x1: u32 = PositionToProjectileMatrixTile(p.x + p.r);
+        const y1: u32 = PositionToProjectileMatrixTile(p.y + p.r);
+
+        // Check all the projectile tiles the player overlaps:
+        for (let y: u32 = y0; y <= y1; ++y) {
+            let off: u32 = y * kProjectileMatrixWidth;
+            for (let x: u32 = x0; x <= x1; ++x) {
+                const tile = ProjectileMatrix[off + x];
+
+                // Check all the bullets on the tile
+                const count: i32 = tile.length;
+                for (let i: i32 = 0; i < count; ++i) {
+                    const projectile = tile[i];
+
+                    if (p.team == projectile.team) {
+                        continue;
+                    }
+
+                    if (IsColliding(p, projectile)) {
+                        // FIXME: Report collision with bullet
+                        // FIXME: Delete bullet
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -436,7 +516,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         SimulateProjectileStep(p, dt);
 
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
-            // Delete projectile
+            MatrixRemoveProjectile(p);
             BombList[i] = BombList[BombList.length - 1];
             BombList.length--;
             --i;
@@ -452,7 +532,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         SimulateProjectileStep(p, dt);
 
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
-            // Delete projectile
+            MatrixRemoveProjectile(p);
             BulletList[i] = BulletList[BombList.length - 1];
             BulletList.length--;
             --i;
