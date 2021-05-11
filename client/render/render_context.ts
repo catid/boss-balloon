@@ -1,11 +1,6 @@
 import { WebGLRenderingContext } from "./WebGL";
 
-
-namespace Render {
-
-
 let gl: WebGLRenderingContext;
-
 
 export class RenderContext {
     public static I: RenderContext;
@@ -47,6 +42,3 @@ export class RenderContext {
         gl.flush();
     }
 }
-
-
-} // namespace Render

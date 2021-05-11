@@ -1,10 +1,12 @@
-import { Netcode, jsConsoleLog, jsGetMilliseconds } from "./netcode";
+import { jsConsoleLog, jsGetMilliseconds } from "./javascript";
 
 export namespace Physics {
 
 
 //------------------------------------------------------------------------------
 // Constants
+
+export const kMaxTeams: i32 = 5;
 
 export const kProjectileMaxAge: i32 = 10_000 * 4; // quarters of a second
 
@@ -37,6 +39,23 @@ export const kProjectileMatrixWidth: u32 = 64; // i32(kMapWidth / (kScreenToMapF
 
 // Must be a power of two
 export const kProjectileInterval: i32 = 512 * 4; // time units
+
+
+//------------------------------------------------------------------------------
+// Time Units
+
+// LSB = 1/4 of a millisecond
+
+let time_epoch_msec: f64 = 0.0;
+
+function InitTimeConversion(t_msec: f64): void {
+    time_epoch_msec = t_msec;
+}
+
+// Convert to internal integer time units from floating-point performance.now() milliseconds
+export function ConvertWallclock(t_msec: f64): u64 {
+    return u64((t_msec - time_epoch_msec) * 4.0) & ~(u64(1) << 63);
+}
 
 
 //------------------------------------------------------------------------------
@@ -181,6 +200,21 @@ export function CreatePlayer(x: f32, y: f32, size: u8, team: u8): PlayerCollider
     PlayerColliderList.push(p);
 
     return p;
+}
+
+export function RemovePlayer(p: PlayerCollider) {
+    // Remove from collision matrix
+    MatrixRemovePlayer(p);
+
+    // Remove from PlayerColliderList
+    const count: i32 = PlayerColliderList.length;
+    for (let i: i32 = 0; i < count; ++i) {
+        if (PlayerColliderList[i] == p) {
+            PlayerColliderList[i] = PlayerColliderList[count - 1];
+            PlayerColliderList.length--;
+            break;
+        }
+    }
 }
 
 // Start resize sometime in the future
@@ -336,7 +370,7 @@ function PositionToProjectileMatrixTile(x: f32): u32 {
     return tx;
 }
 
-export function InitializeCollisions(): void {
+function InitializeCollisions(): void {
     for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
         PlayerMatrix[i] = new Array<PlayerCollider>();
     }
@@ -579,6 +613,15 @@ export function SimulateTo(local_ts: u64, server_ts: u64): void {
         SimulationStep(f32(dt) * 0.25, last_ts, server_ts);
         last_ts += dt;
     }
+}
+
+
+//------------------------------------------------------------------------------
+// Initialize
+
+export function Initialize(t_msec: f64): void {
+    InitTimeConversion(t_msec);
+    InitializeCollisions();
 }
 
 

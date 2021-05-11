@@ -1,6 +1,3 @@
-export namespace Render {
-
-
 export class RenderColor {
     r: f32
     g: f32
@@ -12,6 +9,3 @@ export class RenderColor {
         this.b = b;
     }
 }
-
-
-} // namespace Render

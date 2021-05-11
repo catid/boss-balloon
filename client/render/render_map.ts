@@ -1,9 +1,5 @@
-import { Render } from "./render_context";
-import { ImageData, WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint, WebGLTexture } from "./WebGL";
-
-
-namespace Render {
-
+import { RenderContext } from "./render_context";
+import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 
 const kVertexShaderCode: string = `
     precision highp float;
@@ -230,6 +226,3 @@ export class RenderMapProgram {
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
      }
 }
-
-
-} // namespace Render

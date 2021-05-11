@@ -4,9 +4,6 @@ import { jsConsoleLog } from "../../common/netcode";
 import { RenderColor } from "./render_common";
 
 
-namespace Render {
-
-
 const kVS: string = `
     precision highp float;
 
@@ -152,6 +149,3 @@ export class RenderBulletProgram {
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }
 }
-
-
-} // namespace Render

@@ -2,10 +2,6 @@ import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { RenderColor } from "./render_common";
 
-
-namespace Render {
-
-
 const kVS: string = `
     precision highp float;
 
@@ -109,6 +105,3 @@ export class RenderStringProgram {
         gl.drawArrays(gl.LINES, 0, 2);
     }
 }
-
-
-} // namespace Render

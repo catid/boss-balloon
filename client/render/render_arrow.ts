@@ -1,11 +1,6 @@
 import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { jsConsoleLog } from "../../common/imports";
 import { RenderColor } from "./render_common";
-
-
-namespace Render {
-
 
 const kVS: string = `
     precision highp float;
@@ -119,6 +114,3 @@ export class RenderArrowProgram {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 }
-
-
-} // namespace Render

@@ -2,10 +2,6 @@ import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
 import { RenderColor } from "./render_common";
 
-
-namespace Render {
-
-
 const kInnerVS: string = `
     precision highp float;
 
@@ -294,6 +290,3 @@ export class RenderPlayerProgram {
         gl.drawElements(gl.TRIANGLES, data.outer_indices.length, gl.UNSIGNED_BYTE, 0);
     }
 }
-
-
-} // namespace Render
