@@ -104,3 +104,7 @@ dist
 .tern-port
 
 *.pem
+
+*.wasm
+*.wasm.map
+*.wat

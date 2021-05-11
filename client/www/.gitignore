@@ -1,6 +1,1 @@
-*.wasm
-*.wasm.map
-*.wat
-
-# Generated for deployment
-bossballoon.js
+*.js
