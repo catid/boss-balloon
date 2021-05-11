@@ -1,6 +1,6 @@
 import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { consoleLog } from "../../common/netcode";
+import { jsConsoleLog } from "../../common/netcode";
 
 
 const kVS: string = `

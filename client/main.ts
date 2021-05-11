@@ -3,7 +3,6 @@
 
 import { Netcode } from "../common/netcode";
 import { Physics } from "../common/physics";
-import { Imports } from "./imports";
 import { Tools } from "./common/tools";
 
 
@@ -101,7 +100,7 @@ function SendPosition(t: u64): void {
     store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
     store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
 
-    sendUnreliable(buffer);
+    jsSendUnreliable(buffer);
 }
 
 

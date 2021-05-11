@@ -63,7 +63,7 @@ function UpdateMusic(t: u64, sx: f32, sy: f32): void {
     if (active_music != next_music) {
         active_music = next_music;
         last_music_change = t;
-        playMusic(active_music);
+        jsPlayMusic(active_music);
         next_music = "";
     }
 }

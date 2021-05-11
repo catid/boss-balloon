@@ -132,14 +132,14 @@ function ChooseNewPlayerTeam(): u8 {
 
 export function OnConnectionOpen(id: i32): ConnectedClient | null {
     if (IdAssigner.IsFull()) {
-        consoleLog("Server full - Connection denied");
+        jsConsoleLog("Server full - Connection denied");
         return null;
     }
 
-    const now_msec: f64 = getMilliseconds();
+    const now_msec: f64 = jsGetMilliseconds();
 
     let client = new ConnectedClient(id);
-    consoleLog("Connection open id=" + client.id.toString());
+    jsConsoleLog("Connection open id=" + client.id.toString());
 
     client.player_id = IdAssigner.Acquire();
     client.name = "Player " + client.player_id.toString();
@@ -148,7 +148,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
 
     SendTimeSync(client, now_msec);
 
-    sendReliable(client.id, Netcode.MakeSetId(client.player_id));
+    jsSendReliable(client.id, Netcode.MakeSetId(client.player_id));
 
     Clients.set(id, client);
 
@@ -216,7 +216,7 @@ export function OnSendTimer(client: ConnectedClient): void {
                 ++j;
             }
 
-            sendUnreliable(client.id, buffer);
+            jsSendUnreliable(client.id, buffer);
         }
     }
 
@@ -227,11 +227,11 @@ export function OnSendTimer(client: ConnectedClient): void {
         return;
     }
 
-    sendReliable(client.id, buffer);
+    jsSendReliable(client.id, buffer);
 }
 
 export function OnConnectionClose(client: ConnectedClient): void {
-    consoleLog("Connection close id=" + client.id.toString());
+    jsConsoleLog("Connection close id=" + client.id.toString());
 
     IdAssigner.Release(client.player_id);
 
@@ -271,7 +271,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
 
             client.TimeSync.OnPeerSync(t, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
-            //sendUnreliable(client.id, Netcode.MakeTimeSyncPong(remote_send_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
+            //jsSendUnreliable(client.id, Netcode.MakeTimeSyncPong(remote_send_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
 
             offset += 14;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
@@ -282,10 +282,10 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
             if (pong < ping || t + 1 < pong) {
-                consoleLog("*** TEST FAILED!");
-                consoleLog("Ping T = " + ping.toString());
-                consoleLog("Pong T = " + pong.toString());
-                consoleLog("Recv T = " + t.toString());
+                jsConsoleLog("*** TEST FAILED!");
+                jsConsoleLog("Ping T = " + ping.toString());
+                jsConsoleLog("Pong T = " + pong.toString());
+                jsConsoleLog("Recv T = " + t.toString());
                 client.TimeSync.DumpState();
             }
 
@@ -349,7 +349,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
 
             offset += 14;
         } else {
-            consoleLog("Client sent invalid unreliable data");
+            jsConsoleLog("Client sent invalid unreliable data");
             return;
         }
     }
@@ -371,7 +371,7 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
             let m_len: u16 = load<u16>(ptr, 1);
 
             if (3 + m_len > remaining) {
-                consoleLog("Truncated chat");
+                jsConsoleLog("Truncated chat");
                 return;
             }
 
@@ -388,7 +388,7 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 
             offset += 4 + m_len;
         } else {
-            consoleLog("Client sent invalid reliable data");
+            jsConsoleLog("Client sent invalid reliable data");
             return;
         }
     }
@@ -399,5 +399,5 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 // Message Serializers
 
 export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
-    sendUnreliable(client.id, client.TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
+    jsSendUnreliable(client.id, client.TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
 }

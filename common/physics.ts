@@ -1,4 +1,4 @@
-import { Netcode, consoleLog, getMilliseconds } from "./netcode";
+import { Netcode, jsConsoleLog, jsGetMilliseconds } from "./netcode";
 
 export namespace Physics {
 

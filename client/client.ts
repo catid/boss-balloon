@@ -4,7 +4,7 @@ function OnPlayerKilled(killer: Player, killee: Player): void {
 }
 
 function OnChat(player: Player, m: string): void {
-    Imports.consoleLog("Chat: " + m.toString());
+    jsConsoleLog("Chat: " + m.toString());
 }
 
 
@@ -12,7 +12,7 @@ function OnChat(player: Player, m: string): void {
 // Connection
 
 export function OnConnectionOpen(now_msec: f64): void {
-    Imports.consoleLog("UDP link up");
+    jsConsoleLog("UDP link up");
 
     TimeConverter = new Netcode.TimeConverter(now_msec);
 
@@ -24,7 +24,7 @@ export function OnConnectionOpen(now_msec: f64): void {
 
     let chat = Netcode.MakeChatRequest("Hello World");
     if (chat != null) {
-        Imports.sendReliable(chat);
+        jsSendReliable(chat);
     }
 }
 
@@ -34,11 +34,11 @@ export function OnReliableSendTimer(): void {
         return;
     }
 
-    Imports.sendReliable(buffer);
+    jsSendReliable(buffer);
 }
 
 export function OnConnectionClose(): void {
-    Imports.consoleLog("UDP link down");
+    jsConsoleLog("UDP link down");
 }
 
 
@@ -68,7 +68,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             TimeSync.OnPeerSync(t, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
-            //sendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
+            //jsSendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
 
             offset += 14;
         } else if (type == Netcode.UnreliableType.TimeSyncPong && remaining >= 7) {
@@ -79,10 +79,10 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
 
             if (pong < ping || t + 1 < pong) {
-                Imports.consoleLog("*** TEST FAILED!");
-                Imports.consoleLog("Ping T = " + ping.toString());
-                Imports.consoleLog("Pong T = " + pong.toString());
-                Imports.consoleLog("Recv T = " + t.toString());
+                jsConsoleLog("*** TEST FAILED!");
+                jsConsoleLog("Ping T = " + ping.toString());
+                jsConsoleLog("Pong T = " + pong.toString());
+                jsConsoleLog("Recv T = " + t.toString());
                 TimeSync.DumpState();
             }
 
@@ -101,7 +101,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             const expected_bytes: i32 = 5 + player_count * bytes_per_client;
 
             if (remaining < expected_bytes) {
-                Imports.consoleLog("Truncated server position");
+                jsConsoleLog("Truncated server position");
                 break;
             }
 
@@ -143,7 +143,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             offset += expected_bytes;
         } else {
-            Imports.consoleLog("Server sent invalid unreliable data");
+            jsConsoleLog("Server sent invalid unreliable data");
             return;
         }
     }
@@ -165,18 +165,18 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             SelfId = load<u8>(ptr, 1);
             offset += 2;
         } else if (type == Netcode.ReliableType.ServerLoginGood) {
-            Imports.serverLoginGood();
+            jsServerLoginGood();
             offset++;
         } else if (type == Netcode.ReliableType.ServerLoginBad && remaining >= 3) {
             let len: i32 = load<u16>(ptr, 1);
             if (len + 3 > remaining) {
-                Imports.consoleLog("Truncated loginbad response");
+                jsConsoleLog("Truncated loginbad response");
                 return;
             }
 
             let s: string = String.UTF8.decodeUnsafe(ptr + 3, len, false);
 
-            Imports.serverLoginBad(s);
+            jsServerLoginBad(s);
 
             offset += 3 + len;
         } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
@@ -198,14 +198,14 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
 
             let name_len: u8 = load<u8>(ptr, 14);
             if (15 + name_len > remaining) {
-                Imports.consoleLog("Truncated setplayer");
+                jsConsoleLog("Truncated setplayer");
                 return;
             }
 
             player.name = String.UTF8.decodeUnsafe(ptr + 15, name_len, false);
             player.name_data = firacode_font.GenerateLine(player.name);
 
-            Imports.consoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
+            jsConsoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
 
             offset += 15 + name_len;
         } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
@@ -213,7 +213,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
 
             player_map.delete(id);
 
-            Imports.consoleLog("RemovePlayer: " + id.toString());
+            jsConsoleLog("RemovePlayer: " + id.toString());
 
             offset += 2;
         } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
@@ -233,7 +233,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             let m_len: u16 = load<u16>(ptr, 2);
 
             if (4 + m_len > remaining) {
-                Imports.consoleLog("Truncated chat");
+                jsConsoleLog("Truncated chat");
                 return;
             }
 
@@ -246,7 +246,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
 
             offset += 4 + m_len;
         } else {
-            Imports.consoleLog("Server sent invalid reliable data");
+            jsConsoleLog("Server sent invalid reliable data");
             return;
         }
     }
@@ -275,6 +275,6 @@ export function SendChatRequest(m: string): i32 {
 }
 
 export function SendTimeSync(): void {
-    const send_msec = Imports.getMilliseconds();
-    Imports.sendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
+    const send_msec = jsGetMilliseconds();
+    jsSendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
 }

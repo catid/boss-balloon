@@ -1,6 +1,6 @@
 import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { consoleLog } from "../../common/imports";
+import { jsConsoleLog } from "../../common/imports";
 import { RenderColor } from "./render_common";
 
 

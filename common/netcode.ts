@@ -346,15 +346,15 @@ export class TimeSync {
     }
 
     DumpState(): void {
-        consoleLog("local_slope = " + this.local_slope.toString());
-        consoleLog("remote_slope = " + this.remote_slope.toString());
-        consoleLog("consensus_slope = " + this.consensus_slope.toString());
-        consoleLog("slope_uncertainty = " + this.slope_uncertainty.toString());
-        consoleLog("drift_samples: " + this.drift_samples.toString());
-        consoleLog("incoming_min_trip = " + this.incoming_min_trip.toString());
-        consoleLog("outgoing_min_trip = " + this.outgoing_min_trip.toString());
-        consoleLog("remote_dy = " + this.remote_dy.toString());
-        consoleLog("local_dx = " + this.local_dx.toString());
+        jsConsoleLog("local_slope = " + this.local_slope.toString());
+        jsConsoleLog("remote_slope = " + this.remote_slope.toString());
+        jsConsoleLog("consensus_slope = " + this.consensus_slope.toString());
+        jsConsoleLog("slope_uncertainty = " + this.slope_uncertainty.toString());
+        jsConsoleLog("drift_samples: " + this.drift_samples.toString());
+        jsConsoleLog("incoming_min_trip = " + this.incoming_min_trip.toString());
+        jsConsoleLog("outgoing_min_trip = " + this.outgoing_min_trip.toString());
+        jsConsoleLog("remote_dy = " + this.remote_dy.toString());
+        jsConsoleLog("local_dx = " + this.local_dx.toString());
     }
 
     // Update how we transform from remote to local timestamps,
@@ -389,7 +389,7 @@ export class TimeSync {
     }
 
     OnTimeSample(local_ts: u64, trunc_remote_ts24: u32): bool {
-        //consoleLog("OnTimeSample()");
+        //jsConsoleLog("OnTimeSample()");
 
         // Expand incoming timestamps to 64-bit, though the high bits will be hallucinated.
         let remote_ts: u64 = TS24ExpandFromTruncatedWithBias(this.last_remote_ts, trunc_remote_ts24);
@@ -410,7 +410,7 @@ export class TimeSync {
             const new_send_ts = this.TransformRemoteToLocal(remote_ts);
             const new_owd = i64(local_ts - new_send_ts);
 
-            //consoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
+            //jsConsoleLog("old owd=" + old_owd.toString() + " new owd=" + new_owd.toString() + " slope=" + this.consensus_slope.toString());
 
             // If the new trip time looks worse:
             // Note: old_owd > 0 check added because sometimes the timestamps are crazy
@@ -476,7 +476,7 @@ export class TimeSync {
 
         // If we have seen this sample:
         if (samples.length > 0 && samples[samples.length - 1].local_ts == this.incoming_min_trip.local_ts) {
-            //consoleLog("Ignoring drift sample repeat");
+            //jsConsoleLog("Ignoring drift sample repeat");
             return;
         }
 
@@ -488,11 +488,11 @@ export class TimeSync {
             const sample_i = samples[0];
             const sample_j = samples[samples.length - 1];
             const m = i32(sample_j.remote_ts - sample_i.remote_ts) / f64(i32(sample_j.local_ts - sample_i.local_ts));
-            //consoleLog("wide slope = " + m.toString());
+            //jsConsoleLog("wide slope = " + m.toString());
         }
 
         if (samples.length < 50) {
-            //consoleLog("Waiting for 50 samples: " + samples.length.toString());
+            //jsConsoleLog("Waiting for 50 samples: " + samples.length.toString());
             return;
         }
 
@@ -500,7 +500,7 @@ export class TimeSync {
             samples.shift();
         }
 
-        //const t0 = getMilliseconds();
+        //const t0 = jsGetMilliseconds();
 
         let slopes: Array<f32> = new Array<f32>(0);
 
@@ -520,7 +520,7 @@ export class TimeSync {
         }
 
         if (slopes.length < 50) {
-            //consoleLog("Too few slopes");
+            //jsConsoleLog("Too few slopes");
             return;
         }
 
@@ -544,8 +544,8 @@ export class TimeSync {
 
         this.has_slope_estimate = true;
 
-        //const t1 = getMilliseconds();
-        //consoleLog("Updated slope estimate in " + (t1 - t0).toString() + " msec");
+        //const t1 = jsGetMilliseconds();
+        //jsConsoleLog("Updated slope estimate in " + (t1 - t0).toString() + " msec");
     }
 
     // Takes in a 23-bit timestamp in peer's clock domain,
