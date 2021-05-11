@@ -8,13 +8,32 @@ export namespace Physics {
 
 export const kProjectileMaxAge: i32 = 10_000 * 4; // quarters of a second
 
+export const kMinPlayerMass: f32 = 1.0; // map units
+export const kMaxPlayerMass: f32 = 2.0;
+
 export const kMinPlayerRadius: f32 = 40.0; // map units
 export const kMaxPlayerRadius: f32 = 400.0;
 
 export const kMinPlayerGuns: i32 = 1; // # bullets fired
 export const kMaxPlayerGuns: i32 = 10;
 
+export const kMapFriction: f32 = 0.001;
+
+export const kPlayerVelocityLimit: f32 = 1.0;
+export const kBulletSpeed: f32 = 0.5;
+
 export const kMapWidth: f32 = 32000.0; // map units
+
+export const kScreenToMapFactor: f32 = 1000.0;
+export const kMapToScreenFactor: f32 = 1.0 / kScreenToMapFactor;
+
+// Size player tile so that players only overlap 2x2 for bullet lookups
+export const kPlayerMatrixWidth: u32 = 64; // i32(kMapWidth / kMaxPlayerRadius + 0.5);
+// Half a screen of bullets per bullet tile
+export const kBulletMatrixWidth: u32 = 64; // i32(kMapWidth / (kScreenToMapFactor * 0.5) + 0.5);
+
+// Must be a power of two
+export const kProjectileInterval: i32 = 512 * 4; // time units
 
 
 //------------------------------------------------------------------------------
@@ -31,7 +50,7 @@ export const kMapWidth: f32 = 32000.0; // map units
     The map coordinates range from 0..31999, and then loop around back to 0.
 */
 export function MapToScreenUnits(map_units: f32): f32 {
-    return map_units * 0.001;
+    return map_units * kMapToScreenFactor;
 }
 
 // Accepts x in [-kMapWidth, kMapWidth*2) and produces values in [0, kMapWidth)
@@ -58,6 +77,10 @@ export function MapDiff(x: f32, x0: f32): f32 {
     return d;
 }
 
+export function MassForSize(size: u8): f32 {
+    return f32(f32(size) / 255.0) * (kMaxPlayerMass - kMinPlayerMass) + kMinPlayerMass;
+}
+
 export function RadiusForSize(size: u8): f32 {
     return f32(f32(size) / 255.0) * (kMaxPlayerRadius - kMinPlayerRadius) + kMinPlayerRadius;
 }
@@ -72,10 +95,10 @@ export function GunsForSize(size: u8): i32 {
 
 // Synchronized, queued size change
 class PlayerSizeChange {
-    t: u64;
+    server_ts: u64;
     size: u8;
-    constructor(t: u64, size: i32) {
-        this.t = t;
+    constructor(server_ts: u64, size: i32) {
+        this.server_ts = server_ts;
         this.size = size;
     }
 }
@@ -89,7 +112,7 @@ export class PlayerCollider {
     ax: f32 = 0.0;
     ay: f32 = 0.0;
 
-    last_shot_t: u64 = 0;
+    last_shot_local_ts: u64 = 0;
     last_shot_x: f32 = 0.0;
     last_shot_y: f32 = 0.0;
     last_shot_vx: f32 = 0.0; // Player velocity during shot
@@ -106,6 +129,8 @@ export class PlayerCollider {
     // Collision radius in map units
     r: f32 = 0.0;
 
+    mass: f32 = 1.0;
+
     // Size changes
     changes: Array<PlayerSizeChange> = new Array<PlayerSizeChange>();
 
@@ -117,23 +142,17 @@ export class PlayerCollider {
         this.size = size;
         this.gun_count = GunsForSize(size);
         this.r = RadiusForSize(size);
+        this.mass = MassForSize(size);
     }
 }
 
 export let PlayerColliderList: Array<PlayerCollider> = new Array<PlayerCollider>();
 
-const kMatrixWidth: i32 = 512;
-export let ColliderMatrix = new Array<Array<PlayerCollider>>(kMatrixWidth * kMatrixWidth);
-
-export function StartResize(p: PlayerCollider, t: u64, size: u8): void {
-    p.changes.push(new PlayerSizeChange(t, size));
-}
-
-function UpdatePlayerSize(p: PlayerCollider, t: u64): void {
+function UpdatePlayerSize(p: PlayerCollider, server_ts: u64): void {
     while (p.changes.length > 0) {
         let change = p.changes[0];
 
-        let dt: i64 = i64(t - change.t);
+        let dt: i64 = i64(server_ts - change.server_ts);
         if (dt < 0) {
             continue;
         }
@@ -143,28 +162,35 @@ function UpdatePlayerSize(p: PlayerCollider, t: u64): void {
     }
 }
 
+// Start resize sometime in the future
+export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {
+    p.changes.push(new PlayerSizeChange(server_ts, size));
+}
+
 
 //------------------------------------------------------------------------------
-// Collision Detection
+// Player Collision Detection
+
+export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
 
 export function InitializeCollisions(): void {
-    for (let i: i32 = 0; i < kMatrixWidth * kMatrixWidth; ++i) {
-        ColliderMatrix[i] = new Array<PlayerCollider>();
+    for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
+        PlayerMatrix[i] = new Array<PlayerCollider>();
     }
 }
 
 function UpdateCollider(p: PlayerCollider): void {
-    let tx: i32 = i32(p.x) / kMatrixWidth;
-    let ty: i32 = i32(p.y) / kMatrixWidth;
-    if (tx >= kMatrixWidth) {
-        tx = kMatrixWidth - 1;
+    let tx: u32 = u32(p.x) / kPlayerMatrixWidth;
+    let ty: u32 = u32(p.y) / kPlayerMatrixWidth;
+    if (tx >= kPlayerMatrixWidth) {
+        tx = kPlayerMatrixWidth - 1;
     }
-    if (ty >= kMatrixWidth) {
-        ty = kMatrixWidth - 1;
+    if (ty >= kPlayerMatrixWidth) {
+        ty = kPlayerMatrixWidth - 1;
     }
 
-    let bin_index: i32 = tx + ty * kMatrixWidth;
-    let new_bin = ColliderMatrix[bin_index];
+    let bin_index: u32 = tx + ty * kPlayerMatrixWidth;
+    let new_bin = PlayerMatrix[bin_index];
 
     // If it is in the same bin:
     if (new_bin === p.collider_matrix_bin) {
@@ -200,60 +226,49 @@ export class Projectile {
     team: u8 = 0;
 
     // Initial fire time (for expiry)
-    t: u64 = 0;
+    local_ts: u64 = 0;
+    server_ts: u64 = 0;
 }
 
 export let BombList: Array<Projectile> = new Array<Projectile>();
 export let BulletList: Array<Projectile> = new Array<Projectile>();
 
-// FIXME: Simulate to exact time
-
-function FireProjectiles(t: u64): void {
+function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
     const players_count = PlayerColliderList.length;
 
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerColliderList[i];
 
-        let vx: f32 = p.vx;
-        let vy: f32 = p.vy;
+        let vx: f32 = p.vx, vy: f32 = p.vy;
         const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
+        const inv_player_speed: f32 = 1.0 / player_speed;
 
         // Record last shot player state, useful for server
         p.last_shot_x = p.x;
         p.last_shot_y = p.y;
-        p.last_shot_t = t;
-        p.last_shot_vx = p.vx;
-        p.last_shot_vy = p.vy;
+        p.last_shot_local_ts = local_ts;
+        p.last_shot_vx = vx;
+        p.last_shot_vy = vy;
 
-        let angle: f32 = Mathf.atan2(p.vy, p.vx);
+        let angle0: f32 = Mathf.atan2(vy, vx);
 
-        for (let j: i32 = 0; j < p.bullet_count; ++j) {
+        const k: f32 = Mathf.PI * 2.0 / f32(p.gun_count);
+
+        for (let j: i32 = 0; j < p.gun_count; ++j) {
+            const angle: f32 = angle0 + f32(j) * k;
+            const nx: f32 = Mathf.cos(angle);
+            const ny: f32 = Mathf.sin(angle);
+
             // Get main shot velocity
-            const bullet_speed: f32 = 0.5;
-            const player_to_bullet_speed = bullet_speed / player_speed;
-            let bvx: f32 = vx * player_to_bullet_speed + vx;
-            let bvy: f32 = vy * player_to_bullet_speed + vy;
-        }
-
-
-
-
-        if (p.vx == 0.0 && p.vy == 0.0) {
-            p.last_shot_vx = 0.0;
-            p.last_shot_vy = 0.0;
-        } else {
-
-            vx = vx * vfactor + p.vx;
-            vy = vy * vfactor + p.vy;
-
-            const is_bomb: bool = (t / (500*4)) % 4 == 0;
+            const player_to_bullet_speed = kBulletSpeed * inv_player_speed;
 
             const pp = new Projectile;
             pp.x = p.x;
             pp.y = p.y;
-            pp.vx = vx;
-            pp.vy = vy;
-            pp.t = t;
+            pp.vx = nx * player_to_bullet_speed + vx;
+            pp.vy = ny * player_to_bullet_speed + vy;
+            pp.local_ts = local_ts;
+            pp.server_ts = server_ts;
             pp.team = p.team;
 
             if (is_bomb) {
@@ -262,26 +277,56 @@ function FireProjectiles(t: u64): void {
                 BulletList.push(pp);
             }
         }
-
-        p.last_shot_t = t;
-        p.last_shot_x = p.x;
-        p.last_shot_y = p.y;
-        p.last_shot_vx = vx;
-        p.last_shot_vy = vy;
+    }
 }
+
+// The tricky thing here is the time sync is not stable
+let last_shot_server_ts: u64 = 0;
+
+function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
+    const server_to_local: i64 = i64(local_ts - server_ts);
+
+    const last_fuzzy_ts: i64 = i64(last_shot_server_ts) - (kProjectileInterval / 2);
+    const dt: i32 = i32(server_ts - last_fuzzy_ts);
+    if (dt < 0) {
+        // Not at least half shot interval elapsed yet
+        return;
+    }
+
+    let final_shot_ts = server_ts - i32(u32(server_ts) % u32(kProjectileInterval));
+    const shots_dt: i32 = i32(final_shot_ts - last_fuzzy_ts);
+    if (shots_dt < 0) {
+        // No new shots before the last one we already fired
+        return;
+    }
+
+    let shot_count: u32 = u32(shots_dt) / u32(kProjectileInterval) + 1;
+    if (shot_count > 5) {
+        shot_count = 5;
+    }
+
+    let server_shot_ts: u64 = final_shot_ts - shot_count * kProjectileInterval;
+
+    for (let i: u32 = 0; i < shot_count; ++i) {
+        const is_bomb: bool = (server_shot_ts / kProjectileInterval) % 4 == 0;
+
+        const local_shot_ts: u64 = u64(server_to_local + server_shot_ts);
+        FireProjectiles(local_shot_ts, server_shot_ts, is_bomb);
+
+        server_shot_ts += kProjectileInterval;
+    }
+
+    last_shot_server_ts = final_shot_ts;
 }
 
 
 //------------------------------------------------------------------------------
 // Simulator
 
-function SimulatePlayerStep(p: PlayerCollider, dt: f32, t: u64): void {
-    UpdatePlayerSize(p, t);
+function SimulatePlayerStep(p: PlayerCollider, dt: f32, local_ts: u64, server_ts: u64): void {
+    UpdatePlayerSize(p, server_ts);
 
-    // TODO: Make slower if ship is larger
-
-    const mass: f32 = 1.0;
-    const inv_mass: f32 = 1.0 / mass;
+    const inv_mass: f32 = 1.0 / p.mass;
 
     let ax: f32 = p.ax * inv_mass;
     let ay: f32 = p.ay * inv_mass;
@@ -298,8 +343,7 @@ function SimulatePlayerStep(p: PlayerCollider, dt: f32, t: u64): void {
     }
 
     // Apply friction directly to velocity prior to max limit
-    const friction: f32 = 0.001;
-    const vf: f32 = friction * inv_mass;
+    const vf: f32 = kMapFriction * inv_mass;
     if (mag > vf) {
         mag -= vf;
     } else {
@@ -308,9 +352,8 @@ function SimulatePlayerStep(p: PlayerCollider, dt: f32, t: u64): void {
     }
 
     // Limit velocity
-    const limit: f32 = 1.0;
-    if (mag > limit) {
-        mag = limit;
+    if (mag > kPlayerVelocityLimit) {
+        mag = kPlayerVelocityLimit;
     }
 
     // Rescale velocity down to limit
@@ -332,13 +375,15 @@ function SimulateProjectileStep(p: Projectile, dt: f32): void {
     p.y = MapModX(p.y + p.vy * dt);
 }
 
-function SimulationStep(dt: f32, t: u64): void {
+function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
     const players_count: i32 = PlayerColliderList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = PlayerColliderList[i];
+        const p = PlayerColliderList[i];
 
-        SimulatePlayerStep(player, dt, t);
+        SimulatePlayerStep(p, dt, local_ts, server_ts);
     }
+
+    UpdatePlayerProjectiles(local_ts, server_ts);
 
     const bomb_count: i32 = BombList.length;
     for (let i: i32 = 0; i < bomb_count; ++i) {
@@ -346,7 +391,7 @@ function SimulationStep(dt: f32, t: u64): void {
 
         SimulateProjectileStep(p, dt);
 
-        if (i32(t - p.t) > kProjectileMaxAge) {
+        if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             // Delete projectile
             BombList[i] = BombList[BombList.length - 1];
             BombList.length--;
@@ -360,7 +405,7 @@ function SimulationStep(dt: f32, t: u64): void {
 
         SimulateProjectileStep(p, dt);
 
-        if (i32(t - p.t) > kProjectileMaxAge) {
+        if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             // Delete projectile
             BulletList[i] = BulletList[BombList.length - 1];
             BulletList.length--;
@@ -369,22 +414,24 @@ function SimulationStep(dt: f32, t: u64): void {
     }
 }
 
-let last_t: u64 = 0;
+let last_ts: u64 = 0;
 
-export function SimulateTo(t: u64): void {
-    let dt: i32 = i32(t - last_t);
+export function SimulateTo(local_ts: u64, server_ts: u64): void {
+    let dt: i32 = i32(local_ts - last_ts);
+    server_ts -= dt;
 
     const step: i32 = 40;
 
     while (dt >= step) {
-        SimulationStep(f32(step) * 0.25, last_t);
+        SimulationStep(f32(step) * 0.25, last_ts, server_ts);
         dt -= step;
-        last_t += step;
+        last_ts += step;
+        server_ts += step;
     }
 
     if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25, last_t);
-        last_t += dt;
+        SimulationStep(f32(dt) * 0.25, last_ts, server_ts);
+        last_ts += dt;
     }
 }
 
