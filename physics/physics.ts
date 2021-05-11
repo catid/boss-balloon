@@ -34,6 +34,17 @@ export function MapToScreenUnits(map_units: f32): f32 {
     return map_units * 0.001;
 }
 
+// Accepts x in [-kMapWidth, kMapWidth*2) and produces values in [0, kMapWidth)
+function MapModX(x: f32): f32 {
+    if (x >= kMapWidth) {
+        return x - kMapWidth;
+    } else if (x < 0.0) {
+        return x + kMapWidth;
+    } else {
+        return x;
+    }
+}
+
 // Returns x - x0, taking map wrap-around into account.
 export function MapDiff(x: f32, x0: f32): f32 {
     let d = x - x0;
@@ -118,21 +129,17 @@ export function StartResize(p: PlayerCollider, t: u64, size: u8): void {
     p.changes.push(new PlayerSizeChange(t, size));
 }
 
-function UpdatePlayerSize(p: PlayerCollider, t: u64) {
-    if (p.changes.length <= 0) {
-        return;
-    }
-
-    for (let i: i32 = 0; i < p.changes.length; ++i) {
-        let change = p.changes[i];
+function UpdatePlayerSize(p: PlayerCollider, t: u64): void {
+    while (p.changes.length > 0) {
+        let change = p.changes[0];
 
         let dt: i64 = i64(t - change.t);
-        if (dt > 0) {
+        if (dt < 0) {
             continue;
         }
 
         p.SetSize(change.size);
-        return;
+        p.changes.shift();
     }
 }
 
@@ -269,6 +276,8 @@ function FireProjectiles(t: u64): void {
 // Simulator
 
 function SimulatePlayerStep(p: PlayerCollider, dt: f32, t: u64): void {
+    UpdatePlayerSize(p, t);
+
     // TODO: Make slower if ship is larger
 
     const mass: f32 = 1.0;
@@ -312,39 +321,15 @@ function SimulatePlayerStep(p: PlayerCollider, dt: f32, t: u64): void {
     p.vx = vx;
     p.vy = vy;
 
-    p.x += vx * dt;
-    p.y += vy * dt;
-
-    // Loop player around the map [0..kMapWidth)
-    if (p.x >= Netcode.kMapWidth) {
-        p.x -= Netcode.kMapWidth;
-    } else if (p.x < 0.0) {
-        p.x += Netcode.kMapWidth;
-    }
-    if (p.y >= Netcode.kMapWidth) {
-        p.y -= Netcode.kMapWidth;
-    } else if (p.y < 0.0) {
-        p.y += Netcode.kMapWidth;
-    }
+    p.x = MapModX(p.x + vx * dt);
+    p.y = MapModX(p.y + vy * dt);
 
     UpdateCollider(p);
 }
 
 function SimulateProjectileStep(p: Projectile, dt: f32): void {
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-
-    // Wrap around the map
-    if (p.x >= Netcode.kMapWidth) {
-        p.x -= Netcode.kMapWidth;
-    } else if (p.x < 0.0) {
-        p.x += Netcode.kMapWidth;
-    }
-    if (p.y >= Netcode.kMapWidth) {
-        p.y -= Netcode.kMapWidth;
-    } else if (p.y < 0.0) {
-        p.y += Netcode.kMapWidth;
-    }
+    p.x = MapModX(p.x + p.vx * dt);
+    p.y = MapModX(p.y + p.vy * dt);
 }
 
 function SimulationStep(dt: f32, t: u64): void {
