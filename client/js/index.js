@@ -12,11 +12,12 @@ var cnvs = document.getElementById("cnvs");
 //------------------------------------------------------------------------------
 // Audio
 
-var chill_song = new Audio('audio/replica.mp3')
-var fight1_song = new Audio('audio/deadly_slot_game.mp3')
-var fight2_song = new Audio('audio/aesir_chaos.mp3')
-var laser_sfx = new Audio('audio/laserSmall_000.ogg')
-var explosion_sfx = new Audio('audio/explosion-hq.mp3')
+var chill_song = new Audio('music/replica.mp3')
+var fight1_song = new Audio('music/deadly_slot_game.mp3')
+var fight2_song = new Audio('music/aesir_chaos.mp3')
+
+var laser_sfx = new Audio('sfx/laserSmall_000.ogg')
+var explosion_sfx = new Audio('sfx/explosion-hq.mp3')
 
 var ActiveMusic = "chill";
 var MusicMap = {
@@ -527,4 +528,4 @@ function startRender(wasm_file) {
     })();
 }
 
-startRender("client.wasm");
+startRender("bossballoon.wasm");

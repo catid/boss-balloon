@@ -1,13 +1,13 @@
-import { RenderContext } from "./RenderContext";
-import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./RenderText";
-import { RenderPlayerProgram, RenderPlayerData } from "./RenderPlayer";
-import { RenderStringProgram } from "./RenderString";
-import { RenderBombProgram } from "./RenderBomb";
-import { RenderBulletProgram } from "./RenderBullet";
-import { RenderMapProgram } from "./RenderMap";
-import { RenderArrowProgram } from "./RenderArrow";
-import { RenderSunProgram } from "./RenderSun";
-import { RenderColor } from "./RenderCommon";
+import { RenderContext } from "./render_context";
+import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./render_text";
+import { RenderPlayerProgram, RenderPlayerData } from "./render_player";
+import { RenderStringProgram } from "./render_string";
+import { RenderBombProgram } from "./render_bomb";
+import { RenderBulletProgram } from "./render_bullet";
+import { RenderMapProgram } from "./render_map";
+import { RenderArrowProgram } from "./render_arrow";
+import { RenderSunProgram } from "./render_sun";
+import { RenderColor } from "./render_common";
 
 
 //------------------------------------------------------------------------------
@@ -220,7 +220,7 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
 export function InitializeRender(): void {
     new RenderContext();
 
-    firacode_font = new RenderTextProgram("textures/fira_code_sdf.png");
+    firacode_font = new RenderTextProgram("gfx/fira_code_sdf.png");
     player_prog = new RenderPlayerProgram();
     string_prog = new RenderStringProgram();
     bomb_prog = new RenderBombProgram();
