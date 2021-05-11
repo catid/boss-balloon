@@ -30,7 +30,7 @@ export const kMapToScreenFactor: f32 = 1.0 / kScreenToMapFactor;
 // Size player tile so that players only overlap 2x2 for bullet lookups
 export const kPlayerMatrixWidth: u32 = 64; // i32(kMapWidth / kMaxPlayerRadius + 0.5);
 // Half a screen of bullets per bullet tile
-export const kBulletMatrixWidth: u32 = 64; // i32(kMapWidth / (kScreenToMapFactor * 0.5) + 0.5);
+export const kProjectileMatrixWidth: u32 = 64; // i32(kMapWidth / (kScreenToMapFactor * 0.5) + 0.5);
 
 // Must be a power of two
 export const kProjectileInterval: i32 = 512 * 4; // time units
@@ -169,50 +169,6 @@ export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {
 
 
 //------------------------------------------------------------------------------
-// Player Collision Detection
-
-export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
-
-export function InitializeCollisions(): void {
-    for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
-        PlayerMatrix[i] = new Array<PlayerCollider>();
-    }
-}
-
-function UpdateCollider(p: PlayerCollider): void {
-    let tx: u32 = u32(p.x) / kPlayerMatrixWidth;
-    let ty: u32 = u32(p.y) / kPlayerMatrixWidth;
-    if (tx >= kPlayerMatrixWidth) {
-        tx = kPlayerMatrixWidth - 1;
-    }
-    if (ty >= kPlayerMatrixWidth) {
-        ty = kPlayerMatrixWidth - 1;
-    }
-
-    let bin_index: u32 = tx + ty * kPlayerMatrixWidth;
-    let new_bin = PlayerMatrix[bin_index];
-
-    // If it is in the same bin:
-    if (new_bin === p.collider_matrix_bin) {
-        // No need to move
-        return;
-    }
-
-    // Remove from old bin:
-    if (p.collider_matrix_index != -1) {
-        let old_bin = p.collider_matrix_bin;
-        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
-        old_bin.length--;
-    }
-
-    // Insert into new bin
-    p.collider_matrix_bin = new_bin;
-    p.collider_matrix_index = new_bin.length;
-    new_bin.push(p);
-}
-
-
-//------------------------------------------------------------------------------
 // Projectile
 
 export class Projectile {
@@ -228,6 +184,10 @@ export class Projectile {
     // Initial fire time (for expiry)
     local_ts: u64 = 0;
     server_ts: u64 = 0;
+
+    // Which collision bin are we in?
+    collider_matrix_bin: Array<Projectile>;
+    collider_matrix_index: i32 = -1;
 }
 
 export let BombList: Array<Projectile> = new Array<Projectile>();
@@ -321,6 +281,90 @@ function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
 
 
 //------------------------------------------------------------------------------
+// Collision Detection
+
+export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
+export let ProjectileMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
+
+export function InitializeCollisions(): void {
+    for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
+        PlayerMatrix[i] = new Array<PlayerCollider>();
+    }
+    for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
+        ProjectileMatrix[i] = new Array<Projectile>();
+    }
+}
+
+function UpdatePlayerMatrix(p: PlayerCollider): void {
+    let tx: u32 = u32(p.x) / kPlayerMatrixWidth;
+    let ty: u32 = u32(p.y) / kPlayerMatrixWidth;
+    if (tx >= kPlayerMatrixWidth) {
+        tx = kPlayerMatrixWidth - 1;
+    }
+    if (ty >= kPlayerMatrixWidth) {
+        ty = kPlayerMatrixWidth - 1;
+    }
+
+    let bin_index: u32 = tx + ty * kPlayerMatrixWidth;
+    let new_bin = PlayerMatrix[bin_index];
+
+    // If it is in the same bin:
+    if (new_bin === p.collider_matrix_bin) {
+        // No need to move
+        return;
+    }
+
+    // Remove from old bin:
+    if (p.collider_matrix_index != -1) {
+        let old_bin = p.collider_matrix_bin;
+        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
+        old_bin.length--;
+    }
+
+    // Insert into new bin
+    p.collider_matrix_bin = new_bin;
+    p.collider_matrix_index = new_bin.length;
+    new_bin.push(p);
+}
+
+function UpdateProjectileMatrix(p: Projectile): void {
+    let tx: u32 = u32(p.x) / kProjectileMatrixWidth;
+    let ty: u32 = u32(p.y) / kProjectileMatrixWidth;
+    if (tx >= kProjectileMatrixWidth) {
+        tx = kProjectileMatrixWidth - 1;
+    }
+    if (ty >= kProjectileMatrixWidth) {
+        ty = kProjectileMatrixWidth - 1;
+    }
+
+    let bin_index: u32 = tx + ty * kProjectileMatrixWidth;
+    let new_bin = ProjectileMatrix[bin_index];
+
+    // If it is in the same bin:
+    if (new_bin === p.collider_matrix_bin) {
+        // No need to move
+        return;
+    }
+
+    // Remove from old bin:
+    if (p.collider_matrix_index != -1) {
+        let old_bin = p.collider_matrix_bin;
+        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
+        old_bin.length--;
+    }
+
+    // Insert into new bin
+    p.collider_matrix_bin = new_bin;
+    p.collider_matrix_index = new_bin.length;
+    new_bin.push(p);
+}
+
+function CheckProjectileCollisions(): void {
+    // FIXME
+}
+
+
+//------------------------------------------------------------------------------
 // Simulator
 
 function SimulatePlayerStep(p: PlayerCollider, dt: f32, local_ts: u64, server_ts: u64): void {
@@ -367,7 +411,7 @@ function SimulatePlayerStep(p: PlayerCollider, dt: f32, local_ts: u64, server_ts
     p.x = MapModX(p.x + vx * dt);
     p.y = MapModX(p.y + vy * dt);
 
-    UpdateCollider(p);
+    UpdatePlayerMatrix(p);
 }
 
 function SimulateProjectileStep(p: Projectile, dt: f32): void {
@@ -397,6 +441,8 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
             BombList.length--;
             --i;
         }
+
+        UpdateProjectileMatrix(p);
     }
 
     const bullet_count: i32 = BulletList.length;
@@ -411,7 +457,11 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
             BulletList.length--;
             --i;
         }
+
+        UpdateProjectileMatrix(p);
     }
+
+    CheckProjectileCollisions();
 }
 
 let last_ts: u64 = 0;
