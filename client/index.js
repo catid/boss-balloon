@@ -424,29 +424,29 @@ function renderFrame() {
 // WebAssembly Frame Loop
 
 const wasmImports = {
-    netcode: {
-        consoleLog: (m) => {
+    common: {
+        jsConsoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
             //console.log(copy); // sync version
             setTimeout(() => { console.log(copy); }, 50); // async version
         },
-        getMilliseconds: () => {
+        jsGetMilliseconds: () => {
             return performance.now();
         }
     },
     client: {
-        sendReliable: (buffer) => {
+        jsSendReliable: (buffer) => {
             if (webrtc_reliable != null) {
                 webrtc_reliable.send(wasmExports.__getUint8ArrayView(buffer));
             }
         },
-        sendUnreliable: (buffer) => {
+        jsSendUnreliable: (buffer) => {
             if (webrtc_unreliable != null) {
                 webrtc_unreliable.send(wasmExports.__getUint8ArrayView(buffer));
             }
         },
-        playMusic: (name) => {
+        jsPlayMusic: (name) => {
             var copy = wasmExports.__getString(name);
             setTimeout(() => {
                 if (ActiveMusic != copy) {
@@ -483,7 +483,7 @@ const wasmImports = {
                 }
             }, 0);
         },
-        playSFX: (name) => {
+        jsPlaySFX: (name) => {
             var copy = wasmExports.__getString(name);
             setTimeout(() => {
                 if (can_use_audio) {
@@ -492,10 +492,10 @@ const wasmImports = {
                 }
             }, 0);
         },
-        serverLoginGood: () => {
+        jsServerLoginGood: () => {
             console.log("LoginGood");
         },
-        serverLoginBad: (reason) => {
+        jsServerLoginBad: (reason) => {
             var copy = wasmExports.__getString(reason);
             console.error("LoginBad:", copy);
         }

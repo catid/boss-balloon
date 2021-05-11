@@ -1,7 +1,11 @@
-import { RenderContext } from "./RenderContext";
+import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { consoleLog } from "../../netcode/netcode";
-import { RenderColor } from "./RenderCommon";
+import { consoleLog } from "../../common/netcode";
+import { RenderColor } from "./render_common";
+
+
+namespace Render {
+
 
 const kVS: string = `
     precision highp float;
@@ -150,3 +154,6 @@ export class RenderBombProgram {
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }
 }
+
+
+} // namespace Render

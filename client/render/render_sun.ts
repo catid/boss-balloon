@@ -1,6 +1,7 @@
-import { RenderContext } from "./RenderContext";
+import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { consoleLog } from "../../netcode/netcode";
+import { consoleLog } from "../../common/netcode";
+
 
 const kVS: string = `
     precision highp float;

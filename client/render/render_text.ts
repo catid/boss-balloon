@@ -1,7 +1,7 @@
-import { RenderContext } from "./RenderContext";
+import { RenderContext } from "./render_context";
 import { ImageData, WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint, WebGLTexture } from "./WebGL";
-import { consoleLog } from "../../netcode/netcode";
-import { RenderColor } from "./RenderCommon";
+import { RenderColor } from "./render_common";
+
 
 const kVertexShaderCode: string = `
     precision highp float;

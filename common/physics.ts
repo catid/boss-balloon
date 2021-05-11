@@ -1,4 +1,4 @@
-import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
+import { Netcode, consoleLog, getMilliseconds } from "./netcode";
 
 export namespace Physics {
 
@@ -121,13 +121,23 @@ export class PlayerCollider {
     last_shot_vx: f32 = 0.0; // Player velocity during shot
     last_shot_vy: f32 = 0.0;
 
+    // Copy of peer's future we still need to reach
+    simulation_behind: bool = false;
+    peer_t: u64 = 0;
+    peer_x: f32 = 0.0;
+    peer_y: f32 = 0.0;
+    peer_vx: f32 = 0.0;
+    peer_vy: f32 = 0.0;
+    peer_ax: f32 = 0.0;
+    peer_ay: f32 = 0.0;
+
+    size: u8 = 0;
+
     // Number of guns
     gun_count: i32 = 1;
 
     // Team for collision detection
     team: u8 = 0;
-
-    size: u8 = 0;
 
     // Collision radius in map units
     r: f32 = 0.0;
@@ -165,7 +175,13 @@ function UpdatePlayerSize(p: PlayerCollider, server_ts: u64): void {
     }
 }
 
-// FIXME: Add player
+export function CreatePlayer(x: f32, y: f32, size: u8, team: u8): PlayerCollider {
+    const p: PlayerCollider = new PlayerCollider();
+
+    PlayerColliderList.push(p);
+
+    return p;
+}
 
 // Start resize sometime in the future
 export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {

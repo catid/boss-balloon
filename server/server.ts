@@ -1,19 +1,28 @@
 //------------------------------------------------------------------------------
 // Imports
 
-import { Netcode, consoleLog, getMilliseconds } from "../netcode/netcode";
+import { Netcode } from "../common/netcode";
+import { Physics } from "../common/physics";
+import { Tools } from "../common/tools";
 
-declare function sendReliable(id: i32, buffer: Uint8Array): void
-declare function sendUnreliable(id: i32, buffer: Uint8Array): void
-declare function broadcastReliable(exclude_id: i32, buffer: Uint8Array): void
-declare function broadcastUnreliable(exclude_id: i32, buffer: Uint8Array): void
 
-export const UINT8ARRAY_ID = idof<Uint8Array>();
+//------------------------------------------------------------------------------
+// Constants
+
+// Maximum number of teams
+export const kMaxTeams: i32 = 5;
+
+
+//------------------------------------------------------------------------------
+// Objects
 
 let Clients = new Map<i32, ConnectedClient>();
 let temp_clients: Array<ConnectedClient>;
 
-let TimeConverter: Netcode.TimeConverter;
+let TimeConverter: Tools.TimeConverter;
+
+const npt_counts: Array<i32> = new Array<i32>(Netcode.kMaxTeams);
+
 
 
 //------------------------------------------------------------------------------
@@ -53,200 +62,6 @@ export function Initialize(now_msec: f64): void {
 
 
 //------------------------------------------------------------------------------
-// Physics
-
-class BulletWeapon {
-    x: f32 = 0;
-    y: f32 = 0;
-    vx: f32 = 0;
-    vy: f32 = 0;
-    team: u8 = 0;
-    t: u64 = 0;
-}
-
-class BombWeapon {
-    x: f32 = 0;
-    y: f32 = 0;
-    vx: f32 = 0;
-    vy: f32 = 0;
-    team: u8 = 0;
-    t: u64 = 0;
-}
-
-let BulletList: Array<BulletWeapon> = new Array<BulletWeapon>();
-let BombList: Array<BombWeapon> = new Array<BombWeapon>();
-
-function SimulateOnePlayerStep(player: ConnectedClient, dt: f32): void {
-    // TODO: Make slower if ship is larger
-
-    const mass: f32 = 1.0;
-    const inv_mass: f32 = 1.0 / mass;
-
-    let ax: f32 = player.ax * inv_mass;
-    let ay: f32 = player.ay * inv_mass;
-
-    let vx = player.vx + ax * dt;
-    let vy = player.vy + ay * dt;
-
-    let norm: f32 = f32(Math.sqrt(vx * vx + vy * vy));
-    let mag = norm;
-
-    if (norm > 0.0) {
-        const friction: f32 = 0.001;
-        const vf: f32 = friction * inv_mass;
-
-        if (mag > vf) {
-            mag -= vf;
-        } else {
-            mag = 0.0;
-        }
-
-        const limit: f32 = 1.0;
-        if (mag > limit) {
-            mag = limit;
-        }
-
-        mag /= norm;
-        vx *= mag;
-        vy *= mag;
-
-        player.vx = vx;
-        player.vy = vy;
-
-        player.x += vx * dt;
-        player.y += vy * dt;
-
-        if (player.x >= Netcode.kMapWidth) {
-            player.x -= Netcode.kMapWidth;
-        } else if (player.x < 0.0) {
-            player.x += Netcode.kMapWidth;
-        }
-        if (player.y >= Netcode.kMapWidth) {
-            player.y -= Netcode.kMapWidth;
-        } else if (player.y < 0.0) {
-            player.y += Netcode.kMapWidth;
-        }
-    }
-}
-
-function SimulateOnePlayer(client: ConnectedClient, dt: i32): void {
-    const step: i32 = 40;
-
-    while (dt >= step) {
-        SimulateOnePlayerStep(client, f32(step) * 0.25);
-        dt -= step;
-    }
-
-    if (dt > 0) {
-        SimulateOnePlayerStep(client, f32(dt) * 0.25);
-    }
-}
-
-function SimulationStep(dt: f32, t: u64): void {
-    const players_count = temp_clients.length;
-
-    for (let i: i32 = 0; i < players_count; ++i) {
-        const player = temp_clients[i];
-
-        if (player.simulation_behind) {
-            // If we have finally caught up with the peer's simulation:
-            let dt: i32 = i32(t - player.peer_t);
-            if (dt >= 0) {
-                // Roll their state up to current simulation time
-                player.x = player.peer_x;
-                player.y = player.peer_y;
-                player.vx = player.peer_vx;
-                player.vy = player.peer_vy;
-                player.ax = player.peer_ax;
-                player.ay = player.peer_ay;
-                player.simulation_behind = false;
-                if (dt > 0) {
-                    SimulateOnePlayer(player, dt);
-                }
-                continue;
-            }
-        }
-
-        SimulateOnePlayerStep(player, dt);
-    }
-
-    for (let i: i32 = 0; i < BombList.length; ++i) {
-        const bomb = BombList[i];
-
-        bomb.x += bomb.vx * dt;
-        bomb.y += bomb.vy * dt;
-
-        if (bomb.x >= Netcode.kMapWidth) {
-            bomb.x -= Netcode.kMapWidth;
-        } else if (bomb.x < 0.0) {
-            bomb.x += Netcode.kMapWidth;
-        }
-        if (bomb.y >= Netcode.kMapWidth) {
-            bomb.y -= Netcode.kMapWidth;
-        } else if (bomb.y < 0.0) {
-            bomb.y += Netcode.kMapWidth;
-        }
-
-        if (i32(t - bomb.t) > 10_000 * 4) {
-            BombList[i] = BombList[BombList.length - 1];
-            BombList.length--;
-            --i;
-        }
-    }
-
-    for (let i: i32 = 0; i < BulletList.length; ++i) {
-        const bullet = BulletList[i];
-
-        bullet.x += bullet.vx * dt;
-        bullet.y += bullet.vy * dt;
-
-        if (bullet.x >= Netcode.kMapWidth) {
-            bullet.x -= Netcode.kMapWidth;
-        } else if (bullet.x < 0.0) {
-            bullet.x += Netcode.kMapWidth;
-        }
-        if (bullet.y >= Netcode.kMapWidth) {
-            bullet.y -= Netcode.kMapWidth;
-        } else if (bullet.y < 0.0) {
-            bullet.y += Netcode.kMapWidth;
-        }
-
-        if (i32(t - bullet.t) > 10_000 * 4) {
-            BulletList[i] = BulletList[BulletList.length - 1];
-            BulletList.length--;
-            --i;
-        }
-    }
-}
-
-let physics_t: u64 = 0;
-let last_shot_t: u64 = 0;
-
-function Physics(t: u64): void {
-    let dt: i32 = i32(t - physics_t);
-
-    const step: i32 = 40;
-
-    while (dt >= step) {
-        SimulationStep(f32(step) * 0.25, physics_t);
-        dt -= step;
-        physics_t += step;
-
-        let shot_dt: i32 = i32(physics_t - last_shot_t);
-        if (shot_dt >= 500 * 4) {
-            last_shot_t += 500 * 4;
-            FireShots(last_shot_t);
-        }
-    }
-
-    if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25, physics_t);
-        physics_t += dt;
-    }
-}
-
-
-//------------------------------------------------------------------------------
 // Server Main Loop
 
 export function OnTick(now_msec: f64): void {
@@ -255,7 +70,7 @@ export function OnTick(now_msec: f64): void {
 
     temp_clients = Clients.values();
 
-    Physics(t);
+    Physics.SimulateTo(t, t);
 
     // Collect GC after simulation tasks are done
     __collect();
@@ -266,9 +81,11 @@ export function OnTick(now_msec: f64): void {
 // Connection
 
 export class ConnectedClient {
-    id: i32;
+    // Identifier for javascript
+    js_id: i32;
 
-    player_id: u8 = 0;
+    // Identifier for network
+    network_id: u8 = 0;
 
     name: string = "";
     score: u16 = 0;
@@ -277,37 +94,14 @@ export class ConnectedClient {
     skin: u8 = 0;
     team: u8 = 0;
 
-    x: f32 = 0.0;
-    y: f32 = 0.0;
-    vx: f32 = 0.0;
-    vy: f32 = 0.0;
-    ax: f32 = 0.0;
-    ay: f32 = 0.0;
-
-    last_shot_x: f32 = 0.0;
-    last_shot_y: f32 = 0.0;
-    last_shot_vx: f32 = 0.0;
-    last_shot_vy: f32 = 0.0;
-
-    // Copy of peer's future we still need to reach
-    simulation_behind: bool = false;
-    peer_t: u64 = 0;
-    peer_x: f32 = 0.0;
-    peer_y: f32 = 0.0;
-    peer_vx: f32 = 0.0;
-    peer_vy: f32 = 0.0;
-    peer_ax: f32 = 0.0;
-    peer_ay: f32 = 0.0;
-
+    Collider: Physics.PlayerCollider;
     TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
     MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 
-    constructor(id: i32) {
-        this.id = id;
+    constructor(js_id: i32) {
+        this.js_id = js_id;
     }
 };
-
-const npt_counts: Array<i32> = new Array<i32>(Netcode.kMaxTeams);
 
 function ChooseNewPlayerTeam(): u8 {
     npt_counts.fill(0);

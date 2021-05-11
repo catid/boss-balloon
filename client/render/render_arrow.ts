@@ -1,7 +1,11 @@
-import { RenderContext } from "./RenderContext";
+import { RenderContext } from "./render_context";
 import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { consoleLog } from "../../netcode/netcode";
-import { RenderColor } from "./RenderCommon";
+import { consoleLog } from "../../common/imports";
+import { RenderColor } from "./render_common";
+
+
+namespace Render {
+
 
 const kVS: string = `
     precision highp float;
@@ -35,31 +39,14 @@ const kFS: string = `
     varying vec2 v_pos;
 
     void main() {
-        // Radius of circle is always 1, so dist2 = 1 on the border
-        float x = 1.0 - abs(v_pos.x);
-        float y = 1.0 - abs(v_pos.y);
-        float alpha = clamp((x * x + y * y) * 0.5, 0.0, 1.0);
-        float gamma = 1.0 - (v_pos.x * v_pos.x + v_pos.y * v_pos.y);
+        float alpha = (sin(u_t - v_pos.y) + 1.0) * 0.5;
+        vec3 color = mix(u_color, vec3(1.0,1.0,1.0), alpha);
 
-        float t = (sin(u_t) + 1.0) * 0.5;
-
-        float beta = pow(alpha, 3.0 + cos(u_t * 2.0) * 0.5);
-
-        vec3 flare_color = mix(u_color, vec3(0.0, 0.0, 0.0), beta);
-
-        vec3 color;
-        if (alpha > 0.90) {
-            color = u_color;
-        } else {
-            color = flare_color;
-        }
-
-        gl_FragColor = vec4(color, beta*gamma);
+        gl_FragColor = vec4(color, 1.0);
     }
 `;
 
-// Render program shared between all bombs
-export class RenderBulletProgram {
+export class RenderArrowProgram {
     program: WebGLProgram;
     a_position: GLint;
     u_xy: WebGLUniformLocation;
@@ -69,7 +56,6 @@ export class RenderBulletProgram {
     u_t: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
-    indices_buffer: WebGLBuffer;
 
     constructor() {
         const gl = RenderContext.I.gl;
@@ -96,34 +82,20 @@ export class RenderBulletProgram {
         this.u_t = gl.getUniformLocation(this.program, "u_t");
 
         this.vertices_buffer = gl.createBuffer();
-        this.indices_buffer = gl.createBuffer();
 
-        let vertex_data: StaticArray<f32> = new StaticArray<f32>(8);
-        vertex_data[0] = 0.0;
+        let vertex_data: StaticArray<f32> = new StaticArray<f32>(6);
+        vertex_data[0] = -1.0;
         vertex_data[1] = -1.0;
         vertex_data[2] = 1.0;
-        vertex_data[3] = 0.0;
+        vertex_data[3] = -1.0;
         vertex_data[4] = 0.0;
         vertex_data[5] = 1.0;
-        vertex_data[6] = -1.0;
-        vertex_data[7] = 0.0;
-
-        let index_data: StaticArray<u8> = new StaticArray<u8>(6);
-        index_data[0] = 0;
-        index_data[1] = 3;
-        index_data[2] = 1;
-        index_data[3] = 1;
-        index_data[4] = 3;
-        index_data[5] = 2;
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertices_buffer);
         gl.bufferData<f32>(gl.ARRAY_BUFFER, vertex_data, gl.STATIC_DRAW);
-
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indices_buffer);
-        gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, index_data, gl.STATIC_DRAW);
     }
 
-    public DrawBullet(
+    public DrawArrow(
         color: RenderColor,
         x: f32, y: f32,
         scale: f32, angle: f32,
@@ -132,7 +104,6 @@ export class RenderBulletProgram {
 
         gl.useProgram(this.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertices_buffer);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indices_buffer);
 
         gl.enableVertexAttribArray(this.a_position);
 
@@ -143,8 +114,11 @@ export class RenderBulletProgram {
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_t, f32((t + 333333)/4 % 1024) * 3.0 * Mathf.PI / 1024.0);
+        gl.uniform1f(this.u_t, f32((t + 235235)/4 % 1024) * 2.1 * Mathf.PI / 1024.0);
 
-        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 }
+
+
+} // namespace Render

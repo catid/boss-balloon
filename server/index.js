@@ -398,19 +398,19 @@ httpsServer.on('upgrade', function upgrade(request, socket, head) {
 // AssemblyScript
 
 const wasmImports = {
-    netcode: {
-        consoleLog: (m) => {
+    common: {
+        jsConsoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
             //console.log(copy); // sync version
             setTimeout(() => { console.log(copy); }, 50); // async version
         },
-        getMilliseconds: () => {
+        jsGetMilliseconds: () => {
             return performance.now();
         }
     },
-    server: {
-        sendReliable: (id, buffer) => {
+    imports: {
+        jsSendReliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
                 console.error("sendBuffer: Invalid id");
@@ -423,7 +423,7 @@ const wasmImports = {
 
             client.dc_reliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
         },
-        sendUnreliable: (id, buffer) => {
+        jsSendUnreliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
                 console.error("sendBuffer: Invalid id");
@@ -435,40 +435,6 @@ const wasmImports = {
             }
 
             client.dc_unreliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
-        },
-        broadcastReliable: (exclude_id, buffer) => {
-            var resultArray = wasmExports.__getUint8ArrayView(buffer);
-
-            for (let client of webrtc_local_map.values()) {
-                if (client == null) {
-                    continue;
-                }
-                if (client.local_id == exclude_id) {
-                    continue;
-                }
-                if (client.dc_reliable == null) {
-                    continue;
-                }
-    
-                client.dc_reliable.sendMessageBinary(resultArray);
-            }
-        },
-        broadcastUnreliable: (exclude_id, buffer) => {
-            var resultArray = wasmExports.__getUint8ArrayView(buffer);
-
-            for (let client of webrtc_local_map.values()) {
-                if (client == null) {
-                    continue;
-                }
-                if (client.local_id == exclude_id) {
-                    continue;
-                }
-                if (client.dc_unreliable == null) {
-                    continue;
-                }
-    
-                client.dc_unreliable.sendMessageBinary(resultArray);
-            }
         }
     }
 };

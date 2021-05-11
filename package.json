@@ -32,9 +32,6 @@
     "@assemblyscript/loader": "^0.18.27"
   },
   "devDependencies": {
-    "as-3d-math": "0.0.1",
-    "as-bind": "^0.6.1",
-    "as-bitray": "^2.4.8",
     "assemblyscript": "^0.18.27",
     "assemblyscript-json": "^1.0.0",
     "express": "^4.17.1",
