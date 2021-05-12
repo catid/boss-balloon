@@ -1,3 +1,7 @@
+import { Physics } from "../common/physics";
+import { Netcode } from "../common/netcode";
+import { jsConsoleLog } from "../common/javascript"
+import { jsSendReliable, jsServerLoginGood, jsServerLoginBad, jsSendUnreliable } from "./javascript"
 
 function OnPlayerKilled(killer: Player, killee: Player): void {
 
@@ -14,7 +18,7 @@ function OnChat(player: Player, m: string): void {
 export function OnConnectionOpen(now_msec: f64): void {
     jsConsoleLog("UDP link up");
 
-    TimeConverter = new Netcode.TimeConverter(now_msec);
+    Physics.Initialize(now_msec);
 
     player_map.clear();
     SelfId = -1;
@@ -277,4 +281,50 @@ export function SendChatRequest(m: string): i32 {
 export function SendTimeSync(): void {
     const send_msec = jsGetMilliseconds();
     jsSendUnreliable(TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
+}
+
+
+//------------------------------------------------------------------------------
+// Position Update
+
+let last_position_send: u64 = 0;
+let last_ax: f32 = 0.0;
+let last_ay: f32 = 0.0;
+
+export function SendPosition(t: u64): void {
+    if (temp_self == null) {
+        return;
+    }
+
+    let dt: i64 = i64(t - last_position_send);
+    if (dt < 100 * 4) {
+        return;
+    }
+
+    if (dt < 200 * 4) {
+        if (Mathf.abs(temp_self!.ax - last_ax) < 0.3 &&
+            Mathf.abs(temp_self!.ay - last_ay) < 0.3) {
+            return;
+        }
+    }
+
+    last_position_send = t;
+    last_ax = temp_self!.ax;
+    last_ay = temp_self!.ay;
+
+    let buffer: Uint8Array = new Uint8Array(14);
+    let ptr: usize = buffer.dataStart;
+
+    store<u8>(ptr, Netcode.UnreliableType.ClientPosition, 0);
+
+    let remote_ts: u32 = TimeSync.LocalToPeerTime_ToTS23(t);
+    Netcode.Store24(ptr, 1, remote_ts);
+
+    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.x), 4);
+    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.y), 6);
+    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vx), 8);
+    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
+    store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
+
+    jsSendUnreliable(buffer);
 }

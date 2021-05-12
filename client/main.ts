@@ -1,70 +1,328 @@
-//------------------------------------------------------------------------------
-// Imports
-
-import { Netcode } from "../common/netcode"
+import { InitializeRender } from "./render/render"
+import { RenderContext } from "./render_context"
+import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./render_text"
+import { RenderPlayerProgram, RenderPlayerData } from "./render_player"
+import { RenderStringProgram } from "./render_string"
+import { RenderBombProgram } from "./render_bomb"
+import { RenderBulletProgram } from "./render_bullet"
+import { RenderMapProgram } from "./render_map"
+import { RenderArrowProgram } from "./render_arrow"
+import { RenderSunProgram } from "./render_sun"
+import { RenderColor } from "./render_common"
 import { Physics } from "../common/physics"
-import { jsSendUnreliable } from "./javascript"
 
 
 //------------------------------------------------------------------------------
-// Initialization
+// Constants
 
-export function Initialize(): void {
-    Physics.Initialize();
-}
+const kTeamColors = [
+    new RenderColor(0.8, 0.4, 0.2), // red
+    new RenderColor(0.2, 1.0, 0.2), // green
+    new RenderColor(0.2, 0.4, 0.8), // blue
+    new RenderColor(0.8, 0.3, 0.8), // purple
+    new RenderColor(0.8, 0.8, 0.5)  // pink
+];
+
+const kTeamTextColors = [
+    new RenderColor(1.0, 0.4, 0.2), // red
+    new RenderColor(0.6, 1.0, 0.6), // green
+    new RenderColor(0.2, 0.4, 1.0), // blue
+    new RenderColor(1.0, 0.3, 1.0), // purple
+    new RenderColor(1.0, 1.0, 0.5)  // pink
+];
+
+const kTextStrokeColor = new RenderColor(0.0, 0.0, 0.0);
+
+const kStringColor = new RenderColor(1.0, 1.0, 1.0);
 
 
 //------------------------------------------------------------------------------
-// Position Update
+// Programs
 
-let last_position_send: u64 = 0;
-let last_ax: f32 = 0.0;
-let last_ay: f32 = 0.0;
+export let FontProgram: RenderTextProgram;
+export let PlayerProgram: RenderPlayerProgram;
+export let StringProgram: RenderStringProgram;
+export let BombProgram: RenderBombProgram;
+export let BulletProgram: RenderBulletProgram;
+export let MapProgram: RenderMapProgram;
+export let ArrowProgram: RenderArrowProgram;
+export let SunProgram: RenderSunProgram;
 
-function SendPosition(t: u64): void {
-    if (temp_self == null) {
-        return;
-    }
 
-    let dt: i64 = i64(t - last_position_send);
-    if (dt < 100 * 4) {
-        return;
-    }
+//------------------------------------------------------------------------------
+// Tools
 
-    if (dt < 200 * 4) {
-        if (Mathf.abs(temp_self!.ax - last_ax) < 0.3 &&
-            Mathf.abs(temp_self!.ay - last_ay) < 0.3) {
-            return;
-        }
-    }
-
-    last_position_send = t;
-    last_ax = temp_self!.ax;
-    last_ay = temp_self!.ay;
-
-    let buffer: Uint8Array = new Uint8Array(14);
-    let ptr: usize = buffer.dataStart;
-
-    store<u8>(ptr, Netcode.UnreliableType.ClientPosition, 0);
-
-    let remote_ts: u32 = TimeSync.LocalToPeerTime_ToTS23(t);
-    Netcode.Store24(ptr, 1, remote_ts);
-
-    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.x), 4);
-    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.y), 6);
-    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vx), 8);
-    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
-    store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
-
-    jsSendUnreliable(buffer);
+function clamp(x: f32, maxval: f32, minval: f32): f32 {
+    return max(maxval, min(minval, x));
 }
 
 
 //------------------------------------------------------------------------------
 // Render
 
-let hack_last_bullet_fire: u64 = 0;
-let hack_bomb_counter: i32 = 0;
+function RenderPlayers(t: u64): void {
+    Physics.ForEachPlayerOnScreen((p: Physics.Player, sx: f32, sy: f32) => void {
+        let sun_x: f32 = p.x;
+        if (sun_x > Physics.kMapWidth * 0.5) {
+            sun_x -= Physics.kMapWidth;
+        }
+        let sun_y: f32 = p.y;
+        if (sun_y > Physics.kMapWidth * 0.5) {
+            sun_y -= Physics.kMapWidth;
+        }
+        const shine_angle: f32 = Mathf.atan2(sun_y, sun_x);
+        const shine_max: f32 = 10000.0;
+        const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
+
+        PlayerProgram.DrawPlayer(
+            kTeamColors[p.team],
+            sx, sy, p.r, shine_angle, shine_dist, t);
+
+        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, t);
+
+        if (p.render_name_data != null) {
+            FontProgram.BeginRender();
+            FontProgram.SetColor(kTeamTextColors[p.team],  kTextStrokeColor);
+            FontProgram.Render(
+                RenderTextHorizontal.Center, RenderTextVertical.Center,
+                sx, sy + 0.06,
+                0.32/p.render_name_data!.width, p.render_name_data!);
+        }
+    });
+}
+
+function RenderProjectiles(t: u64): void {
+    let last_was_bullet = false;
+    let last_was_bomb = false;
+
+    Physics.ForEachProjectileOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => void {
+        if (p.is_bomb) {
+            last_was_bullet = false;
+            if (!last_was_bomb) {
+                last_was_bomb = true;
+                BombProgram.BeginBombs(t, 0.1);
+            }
+            BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + angle);
+        } else {
+            last_was_bomb = false;
+            if (!last_was_bullet) {
+                last_was_bullet = true;
+                BulletProgram.BeginBullets(t, 0.1);
+            }
+            BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + angle);
+        }
+    });
+}
+
+function RenderArrows(t: u64): void {
+    const players_count = player_list.length;
+
+    if (players_count == 0) {
+        return;
+    }
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = player_list[i];
+
+        if (p.on_screen || p.is_self || p.Collider.is_ghost) {
+            continue;
+        }
+
+        let x: f32 = Physics.MapToScreenX(p.Collider.x);
+        let y: f32 = Physics.MapToScreenY(p.Collider.y);
+        const dist: f32 = Mathf.sqrt(x * x + y * y);
+        const scale_min: f32 = 0.01;
+        const scale_max: f32 = 0.04;
+        const scale: f32 = scale_min + clamp(scale_max - dist * 0.004, 0.0, scale_max - scale_min);
+
+        const angle: f32 = Mathf.atan2(y, x);
+
+        if (x > y) {
+            if (x > -y) {
+                // right
+                x = 1.0;
+                y = Mathf.tan(angle);
+            } else {
+                // top
+                x = Mathf.tan(angle - Mathf.PI * 0.5);
+                y = -1.0;
+            }
+        } else {
+            if (x > -y) {
+                // bottom
+                x = -Mathf.tan(angle + Mathf.PI * 0.5);
+                y = 1.0;
+            } else {
+                // left
+                x = -1.0;
+                y = -Mathf.tan(angle);
+            }
+        }
+
+        const edge_limit: f32 = 0.04;
+        if (x < -1.0 + edge_limit) {
+            x = -1.0 + edge_limit;
+        } else if (x > 1.0 - edge_limit) {
+            x = 1.0 - edge_limit;
+        }
+        if (y < -1.0 + edge_limit) {
+            y = -1.0 + edge_limit;
+        } else if (y > 1.0 - edge_limit) {
+            y = 1.0 - edge_limit;
+        }
+
+        ArrowProgram.DrawArrow(
+            kTeamColors[p.team],
+            x, y, scale, angle, t);
+    }
+}
+
+
+//------------------------------------------------------------------------------
+// Objects
+
+export let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
+export let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
+
+
+//------------------------------------------------------------------------------
+// Player
+
+export class Player {
+    network_id: u8 = 0;
+    score: u16 = 0;
+    wins: u32 = 0;
+    losses: u32 = 0;
+    skin: u8 = 0;
+    team: u8 = 0;
+    name: string = "";
+
+    is_self: bool = false;
+
+    size: u8 = 0;
+
+    temp_screen_x: f32 = 0;
+    temp_screen_y: f32 = 0;
+    on_screen: bool = false;
+
+    Collider: Physics.Player;
+
+    constructor() {
+    }
+
+    SetName(name: string): void {
+        this.name = name;
+        this.Collider.render_name_data = FiracodeFont.GenerateLine(name);
+    }
+};
+
+export let SelfId: i32 = -1;
+export let PlayerMap = new Map<u8, Player>();
+
+// Temporary self/player list for current frame
+export let FrameSelf: Player | null;
+export let FramePlayers: Player[]; // temp
+
+export function UpdateFrameInfo(): void {
+    FramePlayers = PlayerMap.values();
+
+    FrameSelf = null;
+    if (SelfId != -1 && PlayerMap.has(u8(SelfId))) {
+        FrameSelf = PlayerMap.get(u8(SelfId));
+    }
+}
+
+
+//------------------------------------------------------------------------------
+// Music
+
+let last_music_change: u64 = 0;
+let active_music: string = "chill";
+let next_music: string = "";
+let next_music_ts: u64 = 0;
+
+function UpdateMusic(t: u64, sx: f32, sy: f32): void {
+    if (temp_self == null) {
+        return;
+    }
+
+    // Do not change music faster than 10 seconds.
+    const dt: i64 = i64(t - last_music_change);
+    if (dt < 10_000 * 4) {
+        return;
+    }
+
+    let enemy_near: bool = false;
+    let highest_size: i32 = 0;
+
+    const players_count = player_list.length;
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const player = player_list[i];
+
+        if (player.team == temp_self!.team) {
+            continue;
+        }
+
+        // Wide radius around screen
+        if (IsObjectOnScreen(player.temp_screen_x, player.temp_screen_y, 0.5)) {
+            enemy_near = true;
+            if (highest_size < i32(player.size)) {
+                highest_size = i32(player.size);
+            }
+        }
+    }
+
+    let music: string = "chill";
+
+    if (enemy_near) {
+        const diff: i32 = i32(temp_self!.size) - highest_size;
+        if (diff > 3) {
+            music = "fight2";
+        } else {
+            music = "fight1";
+        }
+    }
+
+    // Require new music to be consistent for at least 5 seconds before changing.
+    if (next_music != music) {
+        next_music_ts = t;
+        next_music = music;
+        return;
+    }
+
+    const next_dt: i64 = i64(t - next_music_ts);
+    if (next_dt < 5_000 * 4) {
+        return;
+    }
+
+    if (active_music != next_music) {
+        active_music = next_music;
+        last_music_change = t;
+        jsPlayMusic(active_music);
+        next_music = "";
+    }
+}
+
+
+//------------------------------------------------------------------------------
+// Initialization
+
+export function Initialize(): void {
+    new RenderContext();
+
+    FontProgram = new RenderTextProgram("gfx/fira_code_sdf.png");
+    PlayerProgram = new RenderPlayerProgram();
+    StringProgram = new RenderStringProgram();
+    BombProgram = new RenderBombProgram();
+    BulletProgram = new RenderBulletProgram();
+    MapProgram = new RenderMapProgram();
+    ArrowProgram = new RenderArrowProgram();
+    SunProgram = new RenderSunProgram();
+}
+
+
+//------------------------------------------------------------------------------
+// Render
 
 export function RenderFrame(
     now_msec: f64,
@@ -75,19 +333,13 @@ export function RenderFrame(
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = TimeConverter.MsecToTime(now_msec);
+    let t: u64 = Physics.ConvertWallclock(now_msec);
 
     let fx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
     let fy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
 
-    let pointer_active: bool = IsObjectOnScreen(fx, fy);
+    let pointer_active: bool = Physics.IsOnScreen(fx, fy);
 
-    player_list = player_map.values();
-
-    temp_self = null;
-    if (SelfId != -1 && player_map.has(u8(SelfId))) {
-        temp_self = player_map.get(u8(SelfId));
-    }
     if (temp_self != null) {
         temp_self!.ax = 0;
         temp_self!.ay = 0;
