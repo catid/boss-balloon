@@ -1,3 +1,5 @@
+import { jsConsoleLog } from "./javascript"
+
 //------------------------------------------------------------------------------
 // Netcode
 
@@ -822,7 +824,7 @@ export function MakeChat(id: u8, m: string): Uint8Array | null {
 
 
 //------------------------------------------------------------------------------
-// Positioning
+// Position Serdes
 
 // Breaks down after (x,y) > 32767 or < 0.
 export function ConvertXto16(x: f32): u16 {

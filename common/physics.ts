@@ -1,4 +1,4 @@
-import { jsConsoleLog, jsGetMilliseconds } from "./javascript";
+import { jsConsoleLog, jsGetMilliseconds } from "./javascript"
 
 export namespace Physics {
 
@@ -9,6 +9,8 @@ export namespace Physics {
 export const kMaxTeams: i32 = 5;
 
 export const kProjectileMaxAge: i32 = 10_000 * 4; // quarters of a second
+
+export const kSpawnSize: u8 = 3;
 
 export const kMinPlayerMass: f32 = 1.0; // map units
 export const kMaxPlayerMass: f32 = 2.0;
@@ -61,20 +63,6 @@ export function ConvertWallclock(t_msec: f64): u64 {
 //------------------------------------------------------------------------------
 // Tools
 
-/*
-    Screen vs Map Coordinates:
-
-    Upper left of screen is (-1,-1) in screen coordinates.
-    Lower right of screen is (1, 1) in screen coordinates.
-    (0,0) is the center of the screen.
-
-    Map units are 1/1000th of a screen, so a screen is 1000x1000 map units.
-    The map coordinates range from 0..31999, and then loop around back to 0.
-*/
-export function MapToScreenUnits(map_units: f32): f32 {
-    return map_units * kMapToScreenFactor;
-}
-
 // Accepts x in [-kMapWidth, kMapWidth*2) and produces values in [0, kMapWidth)
 function MapModX(x: f32): f32 {
     if (x >= kMapWidth) {
@@ -97,6 +85,33 @@ export function MapDiff(x: f32, x0: f32): f32 {
         }
     }
     return d;
+}
+
+
+/*
+    This converts the map coordinates to screen coordinates relative to the player avatar in the center.
+    The object may be fully outside of the screen, or partially in the screen.
+
+    Screen vs Map Coordinates:
+
+    Upper left of screen is (-1,-1) in screen coordinates.
+    Lower right of screen is (1, 1) in screen coordinates.
+    (0,0) is the center of the screen.
+
+    Map units are 1/1000th of a screen, so a screen is 1000x1000 map units.
+    The map coordinates range from 0..31999, and then loop around back to 0.
+*/
+let ScreenCenterX: f32, ScreenCenterY: f32;
+
+export function SetScreenCenter(x: f32, y: f32) {
+    ScreenCenterX = x;
+    ScreenCenterY = y;
+}
+export function MapToScreenX(map_x: f32): f32 {
+    return MapDiff(map_x, ScreenCenterX) * kMapToScreenFactor;
+}
+export function MapToScreenY(map_y: f32): f32 {
+    return MapDiff(map_y, ScreenCenterY) * kMapToScreenFactor;
 }
 
 export function MassForSize(size: u8): f32 {
@@ -163,6 +178,9 @@ export class PlayerCollider {
 
     mass: f32 = 1.0;
 
+    // Is player dead?
+    is_ghost: bool = false;
+
     // Size changes
     changes: Array<PlayerSizeChange> = new Array<PlayerSizeChange>();
 
@@ -220,6 +238,20 @@ export function RemovePlayer(p: PlayerCollider) {
 // Start resize sometime in the future
 export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {
     p.changes.push(new PlayerSizeChange(server_ts, size));
+}
+
+export function SetRandomSpawnPosition(p: PlayerCollider) {
+    const border: f32 = 2.0;
+    const k: f32 = kMapWidth - border * 2.0;
+    p.x = Mathf.random() * k + border;
+    p.y = Mathf.random() * k + border;
+    p.vx = 0.0;
+    p.vy = 0.0;
+    p.simulation_behind = false;
+    p.ax = 0.0;
+    p.ay = 0.0;
+
+    p.SetSize(kSpawnSize);
 }
 
 
@@ -454,13 +486,16 @@ function IsColliding(p: PlayerCollider, projectile: Projectile): bool {
     const y: f32 = p.y - projectile.y;
     const r: f32 = projectile.r + p.r;
     return x*x + y*y < r*r;
-
 }
 
 function CheckProjectileCollisions(): void {
     const players_count: i32 = PlayerColliderList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerColliderList[i];
+
+        if (p.is_ghost) {
+            continue;
+        }
 
         const x0: u32 = PositionToProjectileMatrixTile(p.x - p.r);
         const y0: u32 = PositionToProjectileMatrixTile(p.y - p.r);
@@ -593,6 +628,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
 
     CheckProjectileCollisions();
 }
+
 
 let last_ts: u64 = 0;
 

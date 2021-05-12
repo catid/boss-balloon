@@ -1,4 +1,4 @@
-import { WebGLRenderingContext } from "./WebGL";
+import { WebGLRenderingContext } from "./WebGL"
 
 let gl: WebGLRenderingContext;
 

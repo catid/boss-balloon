@@ -1,13 +1,14 @@
-import { RenderContext } from "./render_context";
-import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./render_text";
-import { RenderPlayerProgram, RenderPlayerData } from "./render_player";
-import { RenderStringProgram } from "./render_string";
-import { RenderBombProgram } from "./render_bomb";
-import { RenderBulletProgram } from "./render_bullet";
-import { RenderMapProgram } from "./render_map";
-import { RenderArrowProgram } from "./render_arrow";
-import { RenderSunProgram } from "./render_sun";
-import { RenderColor } from "./render_common";
+import { RenderContext } from "./render_context"
+import { RenderTextData, RenderTextProgram, RenderTextHorizontal, RenderTextVertical } from "./render_text"
+import { RenderPlayerProgram, RenderPlayerData } from "./render_player"
+import { RenderStringProgram } from "./render_string"
+import { RenderBombProgram } from "./render_bomb"
+import { RenderBulletProgram } from "./render_bullet"
+import { RenderMapProgram } from "./render_map"
+import { RenderArrowProgram } from "./render_arrow"
+import { RenderSunProgram } from "./render_sun"
+import { RenderColor } from "./render_common"
+import { Physics } from "../../common/physics"
 
 
 //------------------------------------------------------------------------------
@@ -35,22 +36,30 @@ const kStringColor = new RenderColor(1.0, 1.0, 1.0);
 
 
 //------------------------------------------------------------------------------
-// Locals
+// Programs
 
-let firacode_font: RenderTextProgram;
-let player_prog: RenderPlayerProgram;
-let string_prog: RenderStringProgram;
-let bomb_prog: RenderBombProgram;
-let bullet_prog: RenderBulletProgram;
-let map_prog: RenderMapProgram;
-let arrow_prog: RenderArrowProgram;
-let sun_prog: RenderSunProgram;
+export let FontProgram: RenderTextProgram;
+export let PlayerProgram: RenderPlayerProgram;
+export let StringProgram: RenderStringProgram;
+export let BombProgram: RenderBombProgram;
+export let BulletProgram: RenderBulletProgram;
+export let MapProgram: RenderMapProgram;
+export let ArrowProgram: RenderArrowProgram;
+export let SunProgram: RenderSunProgram;
+
+
+//------------------------------------------------------------------------------
+// Tools
+
+function clamp(x: f32, maxval: f32, minval: f32): f32 {
+    return max(maxval, min(minval, x));
+}
 
 
 //------------------------------------------------------------------------------
 // Render
 
-function RenderPlayers(t: u64, sx: f32, sy: f32): void {
+function RenderPlayers(t: u64): void {
     const players_count = player_list.length;
 
     if (players_count == 0) {
@@ -87,10 +96,10 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
             kTeamColors[player.team],
             x, y, 0.04, shine_angle, shine_dist, t);
 
-        string_prog.DrawString(kTeamColors[player.team], x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
+        StringProgram.DrawString(kTeamColors[player.team], x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
     }
 
-    firacode_font.BeginRender();
+    FontProgram.BeginRender();
 
     for (let i: i32 = 0; i < players_count; ++i) {
         const player = player_list[i];
@@ -99,16 +108,16 @@ function RenderPlayers(t: u64, sx: f32, sy: f32): void {
             continue;
         }
 
-        firacode_font.SetColor(kTeamTextColors[player.team],  kTextStrokeColor);
+        FontProgram.SetColor(kTeamTextColors[player.team],  kTextStrokeColor);
 
-        firacode_font.Render(
+        FontProgram.Render(
             RenderTextHorizontal.Center, RenderTextVertical.Center,
             player.temp_screen_x, player.temp_screen_y + 0.06,
             0.32/player.name_data!.width, player.name_data!);
     }
 }
 
-function RenderBullets(t: u64, sx: f32, sy: f32): void {
+function RenderBullets(t: u64): void {
     const count = BulletList.length;
 
     const angle: f32 = f32(t % 100000) / 5000.0;
@@ -123,34 +132,33 @@ function RenderBullets(t: u64, sx: f32, sy: f32): void {
             continue;
         }
 
-        bullet_prog.DrawBullet(
+        BulletProgram.DrawBullet(
             kTeamColors[bullet.team],
             x, y, 0.04, bullet.angle0 + angle, t);
     }
 }
 
-function RenderBombs(t: u64, sx: f32, sy: f32): void {
-    const count = BombList.length;
+function RenderBombs(t: u64): void {
 
     const angle: f32 = f32(t % 100000) / 4000.0;
 
     for (let i: i32 = 0; i < count; ++i) {
         const bomb = BombList[i];
 
-        const x = ObjectToScreen(bomb.x, sx);
-        const y = ObjectToScreen(bomb.y, sy);
+        const x: f32 = Physics.MapToScreenX(b.x);
+        const y: f32 = Physics.MapToScreenY(b.y);
 
         if (!IsObjectOnScreen(x, y, 0.1)) {
             continue;
         }
 
-        bomb_prog.DrawBomb(
+        BombProgram.DrawBomb(
             kTeamColors[bomb.team],
             x, y, 0.1, bomb.angle0 + angle, t);
     }
 }
 
-function RenderArrows(t: u64, sx: f32, sy: f32): void {
+function RenderArrows(t: u64): void {
     const players_count = player_list.length;
 
     if (players_count == 0) {
@@ -158,14 +166,14 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
     }
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = player_list[i];
+        const p = player_list[i];
 
-        if (player.on_screen || player.is_self) {
+        if (p.on_screen || p.is_self || p.Collider.is_ghost) {
             continue;
         }
 
-        let x: f32 = ObjectToScreen(player.x, sx);
-        let y: f32 = ObjectToScreen(player.y, sy);
+        let x: f32 = Physics.MapToScreenX(p.Collider.x);
+        let y: f32 = Physics.MapToScreenY(p.Collider.y);
         const dist: f32 = Mathf.sqrt(x * x + y * y);
         const scale_min: f32 = 0.01;
         const scale_max: f32 = 0.04;
@@ -207,8 +215,8 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
             y = 1.0 - edge_limit;
         }
 
-        arrow_prog.DrawArrow(
-            kTeamColors[player.team],
+        ArrowProgram.DrawArrow(
+            kTeamColors[p.team],
             x, y, scale, angle, t);
     }
 }
@@ -220,12 +228,12 @@ function RenderArrows(t: u64, sx: f32, sy: f32): void {
 export function InitializeRender(): void {
     new RenderContext();
 
-    firacode_font = new RenderTextProgram("gfx/fira_code_sdf.png");
-    player_prog = new RenderPlayerProgram();
-    string_prog = new RenderStringProgram();
-    bomb_prog = new RenderBombProgram();
-    bullet_prog = new RenderBulletProgram();
-    map_prog = new RenderMapProgram();
-    arrow_prog = new RenderArrowProgram();
-    sun_prog = new RenderSunProgram();
+    FontProgram = new RenderTextProgram("gfx/fira_code_sdf.png");
+    PlayerProgram = new RenderPlayerProgram();
+    StringProgram = new RenderStringProgram();
+    BombProgram = new RenderBombProgram();
+    BulletProgram = new RenderBulletProgram();
+    MapProgram = new RenderMapProgram();
+    ArrowProgram = new RenderArrowProgram();
+    SunProgram = new RenderSunProgram();
 }

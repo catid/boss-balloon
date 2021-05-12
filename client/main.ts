@@ -1,60 +1,16 @@
 //------------------------------------------------------------------------------
 // Imports
 
-import { Netcode } from "../common/netcode";
-import { Physics } from "../common/physics";
-import { Tools } from "./common/tools";
-
-
-//------------------------------------------------------------------------------
-// Objects
-
-let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
-let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
-let TimeConverter: Tools.TimeConverter;
-
-let SelfId: i32 = -1;
-
-let player_map = new Map<u8, Player>();
-let player_list: Player[]; // temp
-let temp_self: Player | null;
-
-
-//------------------------------------------------------------------------------
-// Player
-
-class Player {
-    network_id: u8 = 0;
-    score: u16 = 0;
-    wins: u32 = 0;
-    losses: u32 = 0;
-    skin: u8 = 0;
-    team: u8 = 0;
-    name: string = "";
-
-    is_self: bool = false;
-
-    size: u8 = 0;
-
-    temp_screen_x: f32 = 0;
-    temp_screen_y: f32 = 0;
-    on_screen: bool = false;
-
-    name_data: RenderTextData | null = null;
-
-    Collider: Physics.PlayerCollider;
-
-    constructor() {
-    }
-};
+import { Netcode } from "../common/netcode"
+import { Physics } from "../common/physics"
+import { jsSendUnreliable } from "./javascript"
 
 
 //------------------------------------------------------------------------------
 // Initialization
 
 export function Initialize(): void {
-
-    Physics.InitializeCollisions();
+    Physics.Initialize();
 }
 
 
@@ -169,7 +125,7 @@ export function RenderFrame(
     RenderArrows(t, sx, sy);
 
     if (pointer_active) {
-        string_prog.DrawString(
+        StringProgram.DrawString(
             kStringColor,
             fx,
             fy,

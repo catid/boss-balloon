@@ -203,7 +203,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             }
 
             player.name = String.UTF8.decodeUnsafe(ptr + 15, name_len, false);
-            player.name_data = firacode_font.GenerateLine(player.name);
+            player.name_data = FontProgram.GenerateLine(player.name);
 
             jsConsoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
 

@@ -1,9 +1,6 @@
-//------------------------------------------------------------------------------
-// Imports
-
-import { Netcode } from "../common/netcode";
-import { Physics } from "../common/physics";
-import { jsConsoleLog } from "../common/javascript";
+import { Netcode } from "../common/netcode"
+import { Physics } from "../common/physics"
+import { jsConsoleLog } from "../common/javascript"
 
 
 

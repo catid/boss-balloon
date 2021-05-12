@@ -1,6 +1,6 @@
-import { RenderContext } from "./render_context";
-import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
-import { RenderColor } from "./render_common";
+import { RenderContext } from "./render_context"
+import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL"
+import { RenderColor } from "./render_common"
 
 const kInnerVS: string = `
     precision highp float;

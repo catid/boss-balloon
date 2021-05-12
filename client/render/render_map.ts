@@ -1,5 +1,5 @@
-import { RenderContext } from "./render_context";
-import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL";
+import { RenderContext } from "./render_context"
+import { WebGLProgram, WebGLUniformLocation, WebGLBuffer, GLint } from "./WebGL"
 
 const kVertexShaderCode: string = `
     precision highp float;
