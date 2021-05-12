@@ -60,102 +60,58 @@ function clamp(x: f32, maxval: f32, minval: f32): f32 {
 // Render
 
 function RenderPlayers(t: u64): void {
-    const players_count = player_list.length;
-
-    if (players_count == 0) {
-        return;
-    }
-
-    for (let i: i32 = 0; i < players_count; ++i) {
-        const player = player_list[i];
-
-        const x = ObjectToScreen(player.x, sx);
-        const y = ObjectToScreen(player.y, sy);
-
-        player.temp_screen_x = x;
-        player.temp_screen_y = y;
-        player.on_screen = IsObjectOnScreen(x, y, 0.04);
-
-        if (!player.on_screen) {
-            continue;
-        }
-
-        let sun_x: f32 = player.x;
+    Physics.ForEachPlayerOnScreen((p: Physics.Player, sx: f32, sy: f32) => void {
+        let sun_x: f32 = p.x;
         if (sun_x > Physics.kMapWidth * 0.5) {
             sun_x -= Physics.kMapWidth;
         }
-        let sun_y: f32 = player.y;
+        let sun_y: f32 = p.y;
         if (sun_y > Physics.kMapWidth * 0.5) {
             sun_y -= Physics.kMapWidth;
         }
         const shine_angle: f32 = Mathf.atan2(sun_y, sun_x);
         const shine_max: f32 = 10000.0;
-        const shine_dist: f32 = Tools.clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
+        const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
 
-        player_prog.DrawPlayer(
-            kTeamColors[player.team],
-            x, y, 0.04, shine_angle, shine_dist, t);
+        PlayerProgram.DrawPlayer(
+            kTeamColors[p.team],
+            sx, sy, p.r, shine_angle, shine_dist, t);
 
-        StringProgram.DrawString(kTeamColors[player.team], x, y, x + player.vx * 0.1, y + player.vy * 0.1, t);
-    }
+        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, t);
 
-    FontProgram.BeginRender();
+        if (p.render_name_data != null) {
+            FontProgram.BeginRender();
+            FontProgram.SetColor(kTeamTextColors[player.team],  kTextStrokeColor);
 
-    for (let i: i32 = 0; i < players_count; ++i) {
-        const player = player_list[i];
-
-        if (player.name_data == null || !player.on_screen) {
-            continue;
+            FontProgram.Render(
+                RenderTextHorizontal.Center, RenderTextVertical.Center,
+                sx, sy + 0.06,
+                0.32/p.render_name_data!.width, p.render_name_data!);
         }
-
-        FontProgram.SetColor(kTeamTextColors[player.team],  kTextStrokeColor);
-
-        FontProgram.Render(
-            RenderTextHorizontal.Center, RenderTextVertical.Center,
-            player.temp_screen_x, player.temp_screen_y + 0.06,
-            0.32/player.name_data!.width, player.name_data!);
-    }
+    });
 }
 
-function RenderBullets(t: u64): void {
-    const count = BulletList.length;
+function RenderProjectiles(t: u64): void {
+    let last_was_bullet = false;
+    let last_was_bomb = false;
 
-    const angle: f32 = f32(t % 100000) / 5000.0;
-
-    for (let i: i32 = 0; i < count; ++i) {
-        const bullet = BulletList[i];
-
-        const x = ObjectToScreen(bullet.x, sx);
-        const y = ObjectToScreen(bullet.y, sy);
-
-        if (!IsObjectOnScreen(x, y, 0.04)) {
-            continue;
+    Physics.ForEachProjectileOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => void {
+        if (p.is_bomb) {
+            last_was_bullet = false;
+            if (!last_was_bomb) {
+                last_was_bomb = true;
+                BombProgram.BeginBombs(t, 0.1);
+            }
+            BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + angle);
+        } else {
+            last_was_bomb = false;
+            if (!last_was_bullet) {
+                last_was_bullet = true;
+                BulletProgram.BeginBullets(t, 0.1);
+            }
+            BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + angle);
         }
-
-        BulletProgram.DrawBullet(
-            kTeamColors[bullet.team],
-            x, y, 0.04, bullet.angle0 + angle, t);
-    }
-}
-
-function RenderBombs(t: u64): void {
-
-    const angle: f32 = f32(t % 100000) / 4000.0;
-
-    for (let i: i32 = 0; i < count; ++i) {
-        const bomb = BombList[i];
-
-        const x: f32 = Physics.MapToScreenX(b.x);
-        const y: f32 = Physics.MapToScreenY(b.y);
-
-        if (!IsObjectOnScreen(x, y, 0.1)) {
-            continue;
-        }
-
-        BombProgram.DrawBomb(
-            kTeamColors[bomb.team],
-            x, y, 0.1, bomb.angle0 + angle, t);
-    }
+    });
 }
 
 function RenderArrows(t: u64): void {

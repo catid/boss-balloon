@@ -1,3 +1,5 @@
+import { Physics } from "../common/physics"
+import { FiracodeFont } from "./render/render"
 
 
 //------------------------------------------------------------------------------
@@ -5,7 +7,6 @@
 
 let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
 let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
-let TimeConverter: Tools.TimeConverter;
 
 let SelfId: i32 = -1;
 
@@ -34,15 +35,13 @@ class Player {
     temp_screen_y: f32 = 0;
     on_screen: bool = false;
 
-    name_data: RenderTextData | null = null;
-
-    Collider: Physics.PlayerCollider;
+    Collider: Physics.Player;
 
     constructor() {
     }
 
     SetName(name: string): void {
         this.name = name;
-        this.name_data = FiracodeFont.GenerateLine(player.name);
+        this.Collider.render_name_data = FiracodeFont.GenerateLine(name);
     }
 };

@@ -1,4 +1,5 @@
 import { jsConsoleLog, jsGetMilliseconds } from "./javascript"
+import { RenderTextData } from "../client/render/render_text"
 
 export namespace Physics {
 
@@ -31,13 +32,11 @@ export const kBulletRadius = 20.0;
 
 export const kMapWidth: f32 = 32000.0; // map units
 
-export const kScreenToMapFactor: f32 = 1000.0;
-export const kMapToScreenFactor: f32 = 1.0 / kScreenToMapFactor;
+export const kScreenRadius: f32 = 1000.0;
+export const kInvScreenRadius: f32 = 1.0 / kScreenRadius;
 
-// Size player tile so that players only overlap 2x2 for bullet lookups
-export const kPlayerMatrixWidth: u32 = 64; // i32(kMapWidth / kMaxPlayerRadius + 0.5);
-// Half a screen of bullets per bullet tile
-export const kProjectileMatrixWidth: u32 = 64; // i32(kMapWidth / (kScreenToMapFactor * 0.5) + 0.5);
+export const kPlayerMatrixWidth: u32 = 512;
+export const kProjectileMatrixWidth: u32 = 512;
 
 // Must be a power of two
 export const kProjectileInterval: i32 = 512 * 4; // time units
@@ -87,7 +86,6 @@ export function MapDiff(x: f32, x0: f32): f32 {
     return d;
 }
 
-
 /*
     This converts the map coordinates to screen coordinates relative to the player avatar in the center.
     The object may be fully outside of the screen, or partially in the screen.
@@ -98,7 +96,7 @@ export function MapDiff(x: f32, x0: f32): f32 {
     Lower right of screen is (1, 1) in screen coordinates.
     (0,0) is the center of the screen.
 
-    Map units are 1/1000th of a screen, so a screen is 1000x1000 map units.
+    The screen is 2000x2000 map units.
     The map coordinates range from 0..31999, and then loop around back to 0.
 */
 let ScreenCenterX: f32, ScreenCenterY: f32;
@@ -108,10 +106,13 @@ export function SetScreenCenter(x: f32, y: f32) {
     ScreenCenterY = y;
 }
 export function MapToScreenX(map_x: f32): f32 {
-    return MapDiff(map_x, ScreenCenterX) * kMapToScreenFactor;
+    return MapDiff(map_x, ScreenCenterX) * kInvScreenRadius;
 }
 export function MapToScreenY(map_y: f32): f32 {
-    return MapDiff(map_y, ScreenCenterY) * kMapToScreenFactor;
+    return MapDiff(map_y, ScreenCenterY) * kInvScreenRadius;
+}
+export function IsOnScreen(x: f32, r: f32): bool {
+    return abs(x) < kScreenRadius + r;
 }
 
 export function MassForSize(size: u8): f32 {
@@ -128,7 +129,7 @@ export function GunsForSize(size: u8): i32 {
 
 
 //------------------------------------------------------------------------------
-// PlayerCollider
+// Player
 
 // Synchronized, queued size change
 class PlayerSizeChange {
@@ -140,7 +141,7 @@ class PlayerSizeChange {
     }
 }
 
-export class PlayerCollider {
+export class Player {
     // Simulation state
     x: f32 = 0.0;
     y: f32 = 0.0;
@@ -184,8 +185,11 @@ export class PlayerCollider {
     // Size changes
     changes: Array<PlayerSizeChange> = new Array<PlayerSizeChange>();
 
+    // Player name tag
+    render_name_data: RenderTextData | null = null;
+
     // Which collision bin are we in?
-    collider_matrix_bin: Array<PlayerCollider>;
+    collider_matrix_bin: Array<Player>;
     collider_matrix_index: i32 = -1;
 
     SetSize(size: u8): void {
@@ -196,9 +200,9 @@ export class PlayerCollider {
     }
 }
 
-export let PlayerColliderList: Array<PlayerCollider> = new Array<PlayerCollider>();
+export let PlayerList: Array<Player> = new Array<Player>();
 
-function UpdatePlayerSize(p: PlayerCollider, server_ts: u64): void {
+function UpdatePlayerSize(p: Player, server_ts: u64): void {
     while (p.changes.length > 0) {
         let change = p.changes[0];
 
@@ -212,35 +216,35 @@ function UpdatePlayerSize(p: PlayerCollider, server_ts: u64): void {
     }
 }
 
-export function CreatePlayer(x: f32, y: f32, size: u8, team: u8): PlayerCollider {
-    const p: PlayerCollider = new PlayerCollider();
+export function CreatePlayer(x: f32, y: f32, size: u8, team: u8): Player {
+    const p: Player = new Player();
 
-    PlayerColliderList.push(p);
+    PlayerList.push(p);
 
     return p;
 }
 
-export function RemovePlayer(p: PlayerCollider) {
+export function RemovePlayer(p: Player) {
     // Remove from collision matrix
     MatrixRemovePlayer(p);
 
-    // Remove from PlayerColliderList
-    const count: i32 = PlayerColliderList.length;
+    // Remove from PlayerList
+    const count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < count; ++i) {
-        if (PlayerColliderList[i] == p) {
-            PlayerColliderList[i] = PlayerColliderList[count - 1];
-            PlayerColliderList.length--;
+        if (PlayerList[i] == p) {
+            PlayerList[i] = PlayerList[count - 1];
+            PlayerList.length--;
             break;
         }
     }
 }
 
 // Start resize sometime in the future
-export function StartResize(p: PlayerCollider, server_ts: u64, size: u8): void {
+export function StartResize(p: Player, server_ts: u64, size: u8): void {
     p.changes.push(new PlayerSizeChange(server_ts, size));
 }
 
-export function SetRandomSpawnPosition(p: PlayerCollider) {
+export function SetRandomSpawnPosition(p: Player) {
     const border: f32 = 2.0;
     const k: f32 = kMapWidth - border * 2.0;
     p.x = Mathf.random() * k + border;
@@ -268,10 +272,13 @@ export class Projectile {
     // Team, radius for collision detection
     team: u8 = 0;
     r: f32 = 0.0;
+    is_bomb: bool = false;
 
     // Initial fire time (for expiry)
     local_ts: u64 = 0;
     server_ts: u64 = 0;
+
+    angle0: f32 = 0.0;
 
     // Which collision bin are we in?
     collider_matrix_bin: Array<Projectile>;
@@ -282,10 +289,10 @@ export let BombList: Array<Projectile> = new Array<Projectile>();
 export let BulletList: Array<Projectile> = new Array<Projectile>();
 
 function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
-    const players_count = PlayerColliderList.length;
+    const players_count = PlayerList.length;
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = PlayerColliderList[i];
+        const p = PlayerList[i];
 
         let vx: f32 = p.vx, vy: f32 = p.vy;
         const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
@@ -318,6 +325,8 @@ function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
             pp.local_ts = local_ts;
             pp.server_ts = server_ts;
             pp.team = p.team;
+            pp.is_bomb = is_bomb;
+            pp.angle0 = angle0;
 
             if (is_bomb) {
                 BombList.push(pp);
@@ -373,7 +382,7 @@ function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
 //------------------------------------------------------------------------------
 // Collision Detection
 
-export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
+export let PlayerMatrix = new Array<Array<Player>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
 export let ProjectileMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
 
 function PositionToPlayerMatrixTile(x: f32): u32 {
@@ -404,14 +413,14 @@ function PositionToProjectileMatrixTile(x: f32): u32 {
 
 function InitializeCollisions(): void {
     for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
-        PlayerMatrix[i] = new Array<PlayerCollider>();
+        PlayerMatrix[i] = new Array<Player>();
     }
     for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
         ProjectileMatrix[i] = new Array<Projectile>();
     }
 }
 
-function UpdatePlayerMatrix(p: PlayerCollider): void {
+function UpdatePlayerMatrix(p: Player): void {
     let tx: u32 = PositionToPlayerMatrixTile(p.x);
     let ty: u32 = PositionToPlayerMatrixTile(p.y);
 
@@ -463,7 +472,7 @@ function UpdateProjectileMatrix(p: Projectile): void {
     new_bin.push(p);
 }
 
-function MatrixRemovePlayer(p: PlayerCollider): void {
+function MatrixRemovePlayer(p: Player): void {
     if (p.collider_matrix_index != -1) {
         let old_bin = p.collider_matrix_bin;
         old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
@@ -481,7 +490,7 @@ function MatrixRemoveProjectile(p: Projectile): void {
     }
 }
 
-function IsColliding(p: PlayerCollider, projectile: Projectile): bool {
+function IsColliding(p: Player, projectile: Projectile): bool {
     const x: f32 = p.x - projectile.x;
     const y: f32 = p.y - projectile.y;
     const r: f32 = projectile.r + p.r;
@@ -489,9 +498,9 @@ function IsColliding(p: PlayerCollider, projectile: Projectile): bool {
 }
 
 function CheckProjectileCollisions(): void {
-    const players_count: i32 = PlayerColliderList.length;
+    const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = PlayerColliderList[i];
+        const p = PlayerList[i];
 
         if (p.is_ghost) {
             continue;
@@ -520,9 +529,80 @@ function CheckProjectileCollisions(): void {
 
                     if (IsColliding(p, projectile)) {
                         // FIXME: Report collision with bullet
-                        // FIXME: Delete bullet
                     }
                 }
+            }
+        }
+    }
+}
+
+export function ForEachProjectileOnScreen(callback: (p: Projectile, sx: f32, sy: f32)=>void): void {
+    const r: f32 = kScreenRadius + kBulletRadius;
+
+    const x0: u32 = PositionToProjectileMatrixTile(ScreenCenterX - r);
+    const y0: u32 = PositionToProjectileMatrixTile(ScreenCenterY - r);
+
+    const x1: u32 = PositionToProjectileMatrixTile(ScreenCenterX + r);
+    const y1: u32 = PositionToProjectileMatrixTile(ScreenCenterY + r);
+
+    for (let y: u32 = y0; y <= y1; ++y) {
+        let off: u32 = y * kProjectileMatrixWidth;
+ 
+        for (let x: u32 = x0; x <= x1; ++x) {
+            const tile = ProjectileMatrix[off + x];
+
+            const count: i32 = tile.length;
+            for (let i: i32 = 0; i < count; ++i) {
+                const p = tile[i];
+
+                const sx: f32 = MapToScreenX(p.x);
+                if (!IsOnScreen(sx, p.r)) {
+                    continue;
+                }
+                const sy: f32 = MapToScreenY(p.y);
+                if (!IsOnScreen(sy, p.r)) {
+                    continue;
+                }
+
+                callback(p, sx, sy);
+            }
+        }
+    }
+}
+
+export function ForEachPlayerOnScreen(callback: (p: Player, sx: f32, sy: f32)=>void): void {
+    const r: f32 = kScreenRadius + kMaxPlayerRadius;
+
+    const x0: u32 = PositionToPlayerMatrixTile(ScreenCenterX - r);
+    const y0: u32 = PositionToPlayerMatrixTile(ScreenCenterY - r);
+
+    const x1: u32 = PositionToPlayerMatrixTile(ScreenCenterX + r);
+    const y1: u32 = PositionToPlayerMatrixTile(ScreenCenterY + r);
+
+    for (let y: u32 = y0; y <= y1; ++y) {
+        let off: u32 = y * kProjectileMatrixWidth;
+ 
+        for (let x: u32 = x0; x <= x1; ++x) {
+            const tile = PlayerMatrix[off + x];
+
+            const count: i32 = tile.length;
+            for (let i: i32 = 0; i < count; ++i) {
+                const p = tile[i];
+
+                if (p.is_ghost) {
+                    continue;
+                }
+
+                const sx: f32 = MapToScreenX(p.x);
+                if (!IsOnScreen(sx, p.r)) {
+                    continue;
+                }
+                const sy: f32 = MapToScreenY(p.y);
+                if (!IsOnScreen(sy, p.r)) {
+                    continue;
+                }
+
+                callback(p, sx, sy);
             }
         }
     }
@@ -532,7 +612,7 @@ function CheckProjectileCollisions(): void {
 //------------------------------------------------------------------------------
 // Simulator
 
-function SimulatePlayerStep(p: PlayerCollider, dt: f32, local_ts: u64, server_ts: u64): void {
+function SimulatePlayerStep(p: Player, dt: f32, local_ts: u64, server_ts: u64): void {
     UpdatePlayerSize(p, server_ts);
 
     const inv_mass: f32 = 1.0 / p.mass;
@@ -585,9 +665,9 @@ function SimulateProjectileStep(p: Projectile, dt: f32): void {
 }
 
 function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
-    const players_count: i32 = PlayerColliderList.length;
+    const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = PlayerColliderList[i];
+        const p = PlayerList[i];
 
         SimulatePlayerStep(p, dt, local_ts, server_ts);
     }

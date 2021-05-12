@@ -124,11 +124,7 @@ export class RenderBombProgram {
         gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, index_data, gl.STATIC_DRAW);
     }
 
-    public DrawBomb(
-        color: RenderColor,
-        x: f32, y: f32,
-        scale: f32, angle: f32,
-        t: u64): void {
+    public BeginBombs(t: u64, scale: f32): void {
         const gl = RenderContext.I.gl;
 
         gl.useProgram(this.program);
@@ -140,11 +136,16 @@ export class RenderBombProgram {
         // attribute | dimensions | data type | normalize | stride bytes | offset bytes
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
 
+        gl.uniform1f(this.u_scale, scale);
+        gl.uniform1f(this.u_t, f32(t/40 % 1000000) * 0.01);
+    }
+
+    public DrawBomb(color: RenderColor, x: f32, y: f32, angle: f32): void {
+        const gl = RenderContext.I.gl;
+
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
-        gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_t, f32(t/40 % 1000000) * 0.01);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }
