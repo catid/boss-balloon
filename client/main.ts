@@ -364,7 +364,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = Physics.ConvertWallclock(recv_msec);
+    let local_ts: u64 = Physics.ConvertWallclock(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -378,7 +378,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let min_trip_recv_ts24_trunc: u32 = Netcode.Load24(ptr, 7);
             let slope: f32 = load<f32>(ptr, 10);
 
-            TimeSync.OnPeerSync(t, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
+            TimeSync.OnPeerSync(local_ts, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
             //jsSendUnreliable(Netcode.MakeTimeSyncPong(remote_send_ts, TimeSync.LocalToPeerTime_ToTS23(t)));
 
@@ -387,26 +387,21 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             let ping_ts: u32 = Netcode.Load24(ptr, 1);
             let pong_ts: u32 = Netcode.Load24(ptr, 4);
 
-            let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
-            let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
+            let ping: u64 = TimeSync.ExpandLocalTime_FromTS23(local_ts, ping_ts);
+            let pong: u64 = TimeSync.ExpandLocalTime_FromTS23(local_ts, pong_ts);
 
-            if (pong < ping || t + 1 < pong) {
+            if (pong < ping || local_ts + 1 < pong) {
                 jsConsoleLog("*** TEST FAILED!");
                 jsConsoleLog("Ping T = " + ping.toString());
                 jsConsoleLog("Pong T = " + pong.toString());
-                jsConsoleLog("Recv T = " + t.toString());
+                jsConsoleLog("Recv T = " + local_ts.toString());
                 TimeSync.DumpState();
             }
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
             let server_ts: u32 = Netcode.Load24(ptr, 1);
-            let update_t = TimeSync.PeerToLocalTime_FromTS23(server_ts);
-
-            let dt: i32 = i32(t - update_t);
-            if (dt < 0) {
-                update_t = t;
-            }
+            let local_send_ts = TimeSync.PeerToLocalTime_FromTS23(server_ts);
 
             const bytes_per_client: i32 = 19;
             const player_count: i32 = load<u8>(ptr, 4);
@@ -422,16 +417,16 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             for (let i: i32 = 0; i < player_count; ++i) {
                 const player_id: u8 = load<u8>(pptr, 0);
                 if (PlayerMap.has(player_id)) {
-                    const player: Player = PlayerMap.get(player_id);
+                    const p: Player = PlayerMap.get(player_id);
 
-                    if (player.is_self) {
+                    if (p.is_self) {
                         continue;
                     }
 
-                    player.server_x = Netcode.Convert16toX(load<u16>(pptr, 1));
-                    player.server_y = Netcode.Convert16toX(load<u16>(pptr, 3));
-                    player.server_vx = Netcode.Convert16toVX(load<i16>(pptr, 5));
-                    player.server_vy = Netcode.Convert16toVX(load<i16>(pptr, 7));
+                    const x: f32 = Netcode.Convert16toX(load<u16>(pptr, 1));
+                    const y: f32 = Netcode.Convert16toX(load<u16>(pptr, 3));
+                    const vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 5));
+                    const vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 7));
 
                     const aa: u16 = load<u16>(pptr, 9);
                     let ax: f32 = 0.0, ay: f32 = 0.0;
@@ -441,13 +436,19 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                         ay = Mathf.sin(angle);
                     }
 
-                    player.ax = ax;
-                    player.ay = ay;
-
                     const last_shot_x: f32 = Netcode.Convert16toX(load<u16>(pptr, 11));
                     const last_shot_y: f32 = Netcode.Convert16toX(load<u16>(pptr, 13));
                     const last_shot_vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 15));
                     const last_shot_vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 17));
+
+                    const send_delay: i32 = i32(local_ts - local_send_ts);
+
+                    Physics.UpdateServerPosition(
+                        p.Collider,
+                        local_ts, send_delay, server_ts,
+                        x, y, vx, vy,
+                        last_shot_x, last_shot_y,
+                        last_shot_vx, last_shot_vy);
                 }
 
                 pptr += bytes_per_client;

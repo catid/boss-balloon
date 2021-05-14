@@ -211,7 +211,7 @@ function UpdatePlayerSize(p: Player, server_ts: u64): void {
     while (p.changes.length > 0) {
         let change = p.changes[0];
 
-        let dt: i64 = i64(server_ts - change.server_ts);
+        let dt: i32 = i32(server_ts - change.server_ts);
         if (dt < 0) {
             continue;
         }
@@ -865,6 +865,25 @@ export function SimulateTo(local_ts: u64, server_ts: u64): void {
         SimulationStep(f32(dt) * 0.25, last_ts, server_ts);
         last_ts += dt;
     }
+}
+
+
+//------------------------------------------------------------------------------
+// Client
+
+export function UpdateServerPosition(
+    p: Physics.Player,
+    local_ts: u64, send_delay: i32, server_ts: u64,
+    x: f32, y: f32, vx: f32, vy: f32,
+    last_shot_x: f32, last_shot_y: f32,
+    last_shot_vx: f32, last_shot_vy: f32): void {
+    if (send_delay < 1) {
+        send_delay = 1;
+    }
+
+    const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
+    const local_sent_ts: u64 = local_ts - send_delay;
+    const local_shot_ts: u64 = local_sent_ts - last_shot_offset;
 }
 
 
