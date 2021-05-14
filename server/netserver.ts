@@ -267,5 +267,5 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 // Message Serializers
 
 export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
-    jsSendUnreliable(client.id, client.TimeSync.MakeTimeSync(TimeConverter.MsecToTime(send_msec)));
+    jsSendUnreliable(client.id, client.TimeSync.MakeTimeSync(Physics.ConvertWallclock(send_msec)));
 }

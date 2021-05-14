@@ -35,8 +35,11 @@ export const kMapWidth: f32 = 32000.0; // map units
 export const kScreenRadius: f32 = 1000.0;
 export const kInvScreenRadius: f32 = 1.0 / kScreenRadius;
 
-export const kPlayerMatrixWidth: u32 = 512;
-export const kProjectileMatrixWidth: u32 = 512;
+export const kPlayerMatrixWidth: i32 = 512;
+export const kProjectileMatrixWidth: i32 = 512;
+
+// Delay between hits allowed
+export const kHitShieldDelay: i32 = 1000 * 4; // time units
 
 // Must be a power of two
 export const kProjectileInterval: i32 = 512 * 4; // time units
@@ -99,7 +102,7 @@ export function MapDiff(x: f32, x0: f32): f32 {
     The screen is 2000x2000 map units.
     The map coordinates range from 0..31999, and then loop around back to 0.
 */
-let ScreenCenterX: f32, ScreenCenterY: f32;
+export let ScreenCenterX: f32, ScreenCenterY: f32;
 
 export function SetScreenCenter(x: f32, y: f32) {
     ScreenCenterX = x;
@@ -168,6 +171,8 @@ export class Player {
 
     size: u8 = 0;
 
+    last_collision_local_ts: u64 = 0;
+
     // Number of guns
     gun_count: i32 = 1;
 
@@ -228,6 +233,9 @@ export function RemovePlayer(p: Player) {
     // Remove from collision matrix
     MatrixRemovePlayer(p);
 
+    // Remove player projectiles when they leave
+    RemovePlayerProjectiles(p);
+
     // Remove from PlayerList
     const count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < count; ++i) {
@@ -283,6 +291,8 @@ export class Projectile {
     // Which collision bin are we in?
     collider_matrix_bin: Array<Projectile>;
     collider_matrix_index: i32 = -1;
+
+    shooter: Player;
 }
 
 export let BombList: Array<Projectile> = new Array<Projectile>();
@@ -327,6 +337,7 @@ function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
             pp.team = p.team;
             pp.is_bomb = is_bomb;
             pp.angle0 = angle0;
+            pp.shooter = p;
 
             if (is_bomb) {
                 BombList.push(pp);
@@ -378,37 +389,61 @@ function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     last_shot_server_ts = final_shot_ts;
 }
 
+function RemovePlayerProjectiles(p: Player): void {
+    for (let i: i32 = 0; i < BombList.length; ++i) {
+        const pp = BombList[i];
+        if (pp.shooter == p) {
+            MatrixRemoveProjectile(pp);
+            BombList[i] = BombList[BombList.length - 1];
+            BombList.length--;
+            --i;
+        }
+    }
+    for (let i: i32 = 0; i < BulletList.length; ++i) {
+        const pp = BulletList[i];
+        if (pp.shooter == p) {
+            MatrixRemoveProjectile(pp);
+            BulletList[i] = BulletList[BulletList.length - 1];
+            BulletList.length--;
+            --i;
+        }
+    }
+}
+
 
 //------------------------------------------------------------------------------
 // Collision Detection
 
 export let PlayerMatrix = new Array<Array<Player>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
-export let ProjectileMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
+export let BombMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
+export let BulletMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
 
-function PositionToPlayerMatrixTile(x: f32): u32 {
+// This assumes x ranges from [0, kPlayerMatrixWidth)
+function PositionToPlayerMatrixTile(x: f32): i32 {
     if (x <= 0.0) {
         return 0;
     }
 
-    let tx: u32 = u32(x) / kPlayerMatrixWidth;
-    if (tx >= kPlayerMatrixWidth) {
+    let t: i32 = u32(x) / u32(kPlayerMatrixWidth);
+    if (t >= kPlayerMatrixWidth) {
         return kPlayerMatrixWidth - 1;
     }
 
-    return tx;
+    return t;
 }
 
-function PositionToProjectileMatrixTile(x: f32): u32 {
+// This assumes x ranges from [0, kProjectileMatrixWidth)
+function PositionToProjectileMatrixTile(x: f32): i32 {
     if (x <= 0.0) {
         return 0;
     }
 
-    let tx: u32 = u32(x) / kProjectileMatrixWidth;
-    if (tx >= kProjectileMatrixWidth) {
+    let t: i32 = u32(x) / u32(kProjectileMatrixWidth);
+    if (t >= kProjectileMatrixWidth) {
         return kProjectileMatrixWidth - 1;
     }
 
-    return tx;
+    return t;
 }
 
 function InitializeCollisions(): void {
@@ -416,7 +451,10 @@ function InitializeCollisions(): void {
         PlayerMatrix[i] = new Array<Player>();
     }
     for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
-        ProjectileMatrix[i] = new Array<Projectile>();
+        BombMatrix[i] = new Array<Projectile>();
+    }
+    for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
+        BulletMatrix[i] = new Array<Projectile>();
     }
 }
 
@@ -446,12 +484,12 @@ function UpdatePlayerMatrix(p: Player): void {
     new_bin.push(p);
 }
 
-function UpdateProjectileMatrix(p: Projectile): void {
+function UpdateProjectileMatrix(m: Array<Array<Projectile>>, p: Projectile): void {
     let tx: u32 = PositionToProjectileMatrixTile(p.x);
     let ty: u32 = PositionToProjectileMatrixTile(p.y);
 
     let bin_index: u32 = tx + ty * kProjectileMatrixWidth;
-    let new_bin = ProjectileMatrix[bin_index];
+    let new_bin = m[bin_index];
 
     // If it is in the same bin:
     if (new_bin === p.collider_matrix_bin) {
@@ -497,7 +535,15 @@ function IsColliding(p: Player, projectile: Projectile): bool {
     return x*x + y*y < r*r;
 }
 
-function CheckProjectileCollisions(): void {
+function OnHit(local_ts: u64, p: Player, pp: Projectile): void {
+    p.last_collision_local_ts = local_ts;
+
+    if (p.size <= 1) {
+        OnKill(p, pp.shooter);
+    }
+}
+
+function CheckProjectileCollisions(local_ts: u64): void {
     const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
@@ -506,29 +552,67 @@ function CheckProjectileCollisions(): void {
             continue;
         }
 
-        const x0: u32 = PositionToProjectileMatrixTile(p.x - p.r);
-        const y0: u32 = PositionToProjectileMatrixTile(p.y - p.r);
+        const x0: i32 = PositionToProjectileMatrixTile(p.x - p.r);
+        const y0: i32 = PositionToProjectileMatrixTile(p.y - p.r);
 
-        const x1: u32 = PositionToProjectileMatrixTile(p.x + p.r);
-        const y1: u32 = PositionToProjectileMatrixTile(p.y + p.r);
+        const x1: i32 = PositionToProjectileMatrixTile(p.x + p.r) + 1;
+        const y1: i32 = PositionToProjectileMatrixTile(p.y + p.r) + 1;
 
         // Check all the projectile tiles the player overlaps:
-        for (let y: u32 = y0; y <= y1; ++y) {
-            let off: u32 = y * kProjectileMatrixWidth;
-            for (let x: u32 = x0; x <= x1; ++x) {
-                const tile = ProjectileMatrix[off + x];
+        for (let y: i32 = y0; y != y1; ++y) {
+            if (y >= kProjectileMatrixWidth) {
+                y = 0; // Loop around
+            }
+            let off: i32 = y * kProjectileMatrixWidth;
 
-                // Check all the bullets on the tile
-                const count: i32 = tile.length;
-                for (let i: i32 = 0; i < count; ++i) {
-                    const projectile = tile[i];
+            for (let x: i32 = x0; x != x1; ++x) {
+                if (x >= kProjectileMatrixWidth) {
+                    x = 0; // Loop around
+                }
 
-                    if (p.team == projectile.team) {
-                        continue;
+                {
+                    const tile = BombMatrix[off + x];
+                    const count: i32 = tile.length;
+                    for (let i: i32 = 0; i < count; ++i) {
+                        const pp = tile[i];
+    
+                        if (p.team == pp.team) {
+                            continue;
+                        }
+    
+                        if (!IsColliding(p, pp)) {
+                            continue;
+                        }
+    
+                        const cdt: i32 = i32(local_ts - p.last_collision_local_ts);
+                        if (cdt < kHitShieldDelay) {
+                            continue;
+                        }
+    
+                        OnHit(local_ts, p, pp);
                     }
+                }
 
-                    if (IsColliding(p, projectile)) {
-                        // FIXME: Report collision with bullet
+                {
+                    const tile = BulletMatrix[off + x];
+                    const count: i32 = tile.length;
+                    for (let i: i32 = 0; i < count; ++i) {
+                        const pp = tile[i];
+    
+                        if (p.team == pp.team) {
+                            continue;
+                        }
+    
+                        if (!IsColliding(p, pp)) {
+                            continue;
+                        }
+    
+                        const cdt: i32 = i32(local_ts - p.last_collision_local_ts);
+                        if (cdt < kHitShieldDelay) {
+                            continue;
+                        }
+    
+                        OnHit(local_ts, p, pp);
                     }
                 }
             }
@@ -536,21 +620,67 @@ function CheckProjectileCollisions(): void {
     }
 }
 
-export function ForEachProjectileOnScreen(callback: (p: Projectile, sx: f32, sy: f32)=>void): void {
+export function ForEachBombOnScreen(callback: (p: Projectile, sx: f32, sy: f32)=>void): void {
     const r: f32 = kScreenRadius + kBulletRadius;
 
-    const x0: u32 = PositionToProjectileMatrixTile(ScreenCenterX - r);
-    const y0: u32 = PositionToProjectileMatrixTile(ScreenCenterY - r);
+    const x0: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterX - r));
+    const y0: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterY - r));
 
-    const x1: u32 = PositionToProjectileMatrixTile(ScreenCenterX + r);
-    const y1: u32 = PositionToProjectileMatrixTile(ScreenCenterY + r);
+    const x1: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterX + r)) + 1;
+    const y1: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterY + r)) + 1;
 
-    for (let y: u32 = y0; y <= y1; ++y) {
-        let off: u32 = y * kProjectileMatrixWidth;
- 
-        for (let x: u32 = x0; x <= x1; ++x) {
-            const tile = ProjectileMatrix[off + x];
+    for (let y: i32 = y0; y != y1; ++y) {
+        if (y >= kProjectileMatrixWidth) {
+            y = 0; // Loop around
+        }
+        let off: i32 = y * kProjectileMatrixWidth;
 
+        for (let x: i32 = x0; x != x1; ++x) {
+            if (x >= kProjectileMatrixWidth) {
+                x = 0; // Loop around
+            }
+
+            const tile = BombMatrix[off + x];
+            const count: i32 = tile.length;
+            for (let i: i32 = 0; i < count; ++i) {
+                const p = tile[i];
+
+                const sx: f32 = MapToScreenX(p.x);
+                if (!IsOnScreen(sx, p.r)) {
+                    continue;
+                }
+                const sy: f32 = MapToScreenY(p.y);
+                if (!IsOnScreen(sy, p.r)) {
+                    continue;
+                }
+
+                callback(p, sx, sy);
+            }
+        }
+    }
+}
+
+export function ForEachBulletOnScreen(callback: (p: Projectile, sx: f32, sy: f32)=>void): void {
+    const r: f32 = kScreenRadius + kBulletRadius;
+
+    const x0: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterX - r));
+    const y0: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterY - r));
+
+    const x1: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterX + r)) + 1;
+    const y1: i32 = PositionToProjectileMatrixTile(MapModX(ScreenCenterY + r)) + 1;
+
+    for (let y: i32 = y0; y != y1; ++y) {
+        if (y >= kProjectileMatrixWidth) {
+            y = 0; // Loop around
+        }
+        let off: i32 = y * kProjectileMatrixWidth;
+
+        for (let x: i32 = x0; x != x1; ++x) {
+            if (x >= kProjectileMatrixWidth) {
+                x = 0; // Loop around
+            }
+
+            const tile = BulletMatrix[off + x];
             const count: i32 = tile.length;
             for (let i: i32 = 0; i < count; ++i) {
                 const p = tile[i];
@@ -573,16 +703,22 @@ export function ForEachProjectileOnScreen(callback: (p: Projectile, sx: f32, sy:
 export function ForEachPlayerOnScreen(callback: (p: Player, sx: f32, sy: f32)=>void): void {
     const r: f32 = kScreenRadius + kMaxPlayerRadius;
 
-    const x0: u32 = PositionToPlayerMatrixTile(ScreenCenterX - r);
-    const y0: u32 = PositionToPlayerMatrixTile(ScreenCenterY - r);
+    const x0: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterX - r));
+    const y0: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterY - r));
 
-    const x1: u32 = PositionToPlayerMatrixTile(ScreenCenterX + r);
-    const y1: u32 = PositionToPlayerMatrixTile(ScreenCenterY + r);
+    const x1: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterX + r)) + 1;
+    const y1: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterY + r)) + 1;
 
-    for (let y: u32 = y0; y <= y1; ++y) {
-        let off: u32 = y * kProjectileMatrixWidth;
+    for (let y: i32 = y0; y != y1; ++y) {
+        if (y >= kPlayerMatrixWidth) {
+            y = 0; // Loop around
+        }
+        let off: i32 = y * kPlayerMatrixWidth;
  
-        for (let x: u32 = x0; x <= x1; ++x) {
+        for (let x: i32 = x0; x != x1; ++x) {
+            if (x >= kPlayerMatrixWidth) {
+                x = 0; // Loop around
+            }
             const tile = PlayerMatrix[off + x];
 
             const count: i32 = tile.length;
@@ -698,7 +834,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
 
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             MatrixRemoveProjectile(p);
-            BulletList[i] = BulletList[BombList.length - 1];
+            BulletList[i] = BulletList[BulletList.length - 1];
             BulletList.length--;
             --i;
         }
@@ -706,7 +842,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         UpdateProjectileMatrix(p);
     }
 
-    CheckProjectileCollisions();
+    CheckProjectileCollisions(local_ts);
 }
 
 
