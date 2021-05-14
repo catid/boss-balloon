@@ -37,6 +37,9 @@ const kTextStrokeColor = new RenderColor(0.0, 0.0, 0.0);
 
 const kStringColor = new RenderColor(1.0, 1.0, 1.0);
 
+// If someone is much larger, switch to boss battle music
+const kMusicSizeDelta: i32 = 6;
+
 
 //------------------------------------------------------------------------------
 // Programs
@@ -56,6 +59,66 @@ export let SunProgram: RenderSunProgram;
 
 function clamp(x: f32, maxval: f32, minval: f32): f32 {
     return max(maxval, min(minval, x));
+}
+
+
+//------------------------------------------------------------------------------
+// Objects
+
+export let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
+export let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
+
+
+//------------------------------------------------------------------------------
+// Player
+
+export class Player {
+    network_id: u8 = 0;
+    score: u16 = 0;
+    wins: u32 = 0;
+    losses: u32 = 0;
+    skin: u8 = 0;
+    team: u8 = 0;
+    name: string = "";
+
+    is_self: bool = false;
+
+    size: u8 = 0;
+
+    temp_screen_x: f32 = 0;
+    temp_screen_y: f32 = 0;
+    on_screen: bool = false;
+
+    Collider: Physics.Player;
+
+    render_name_data: RenderTextData | null = null;
+
+    constructor() {
+        Physics.CreatePlayer();
+    }
+
+    SetName(name: string): void {
+        this.name = name;
+        this.render_name_data = FontProgram.GenerateLine(name);
+    }
+};
+
+export let SelfId: i32 = -1;
+export let PlayerMap = new Map<u8, Player>();
+
+// Temporary self/player list for current frame
+export let HasFrameSelf: bool = false;
+export let FrameSelf: Player;
+export let FramePlayers: Player[]; // temp
+
+export function UpdateFrameInfo(): void {
+    FramePlayers = PlayerMap.values();
+
+    HasFrameSelf = false;
+    if (SelfId != -1 && PlayerMap.has(u8(SelfId))) {
+        FrameSelf = PlayerMap.get(u8(SelfId));
+        HasFrameSelf = true;
+    }
 }
 
 
@@ -82,13 +145,15 @@ function RenderPlayers(t: u64): void {
 
         StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, t);
 
-        if (p.render_name_data != null) {
+        const r: Player = p.client_render_player;
+
+        if (r.render_name_data != null) {
             FontProgram.BeginRender();
             FontProgram.SetColor(kTeamTextColors[p.team],  kTextStrokeColor);
             FontProgram.Render(
                 RenderTextHorizontal.Center, RenderTextVertical.Center,
                 sx, sy + 0.06,
-                0.32/p.render_name_data!.width, p.render_name_data!);
+                0.32/r.render_name_data.width, r.render_name_data);
         }
     });
 }
@@ -110,14 +175,14 @@ function RenderProjectiles(t: u64): void {
 }
 
 function RenderArrows(t: u64): void {
-    const players_count = player_list.length;
+    const players_count = FramePlayers.length;
 
     if (players_count == 0) {
         return;
     }
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = player_list[i];
+        const p = FramePlayers[i];
 
         if (p.on_screen || p.is_self || p.Collider.is_ghost) {
             continue;
@@ -174,61 +239,6 @@ function RenderArrows(t: u64): void {
 
 
 //------------------------------------------------------------------------------
-// Objects
-
-export let TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
-export let MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
-
-
-//------------------------------------------------------------------------------
-// Player
-
-export class Player {
-    network_id: u8 = 0;
-    score: u16 = 0;
-    wins: u32 = 0;
-    losses: u32 = 0;
-    skin: u8 = 0;
-    team: u8 = 0;
-    name: string = "";
-
-    is_self: bool = false;
-
-    size: u8 = 0;
-
-    temp_screen_x: f32 = 0;
-    temp_screen_y: f32 = 0;
-    on_screen: bool = false;
-
-    Collider: Physics.Player;
-
-    constructor() {
-    }
-
-    SetName(name: string): void {
-        this.name = name;
-        this.Collider.render_name_data = FontProgram.GenerateLine(name);
-    }
-};
-
-export let SelfId: i32 = -1;
-export let PlayerMap = new Map<u8, Player>();
-
-// Temporary self/player list for current frame
-export let FrameSelf: Player | null;
-export let FramePlayers: Player[]; // temp
-
-export function UpdateFrameInfo(): void {
-    FramePlayers = PlayerMap.values();
-
-    FrameSelf = null;
-    if (SelfId != -1 && PlayerMap.has(u8(SelfId))) {
-        FrameSelf = PlayerMap.get(u8(SelfId));
-    }
-}
-
-
-//------------------------------------------------------------------------------
 // Music
 
 let last_music_change: u64 = 0;
@@ -237,7 +247,7 @@ let next_music: string = "";
 let next_music_ts: u64 = 0;
 
 function UpdateMusic(t: u64): void {
-    if (temp_self == null) {
+    if (!HasFrameSelf) {
         return;
     }
 
@@ -250,19 +260,20 @@ function UpdateMusic(t: u64): void {
     let enemy_near: bool = false;
     let highest_size: i32 = 0;
 
-    const players_count = player_list.length;
+    const players_count = FramePlayers.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const player = player_list[i];
+        const p = FramePlayers[i];
 
-        if (player.team == temp_self!.team) {
+        if (p.team == FrameSelf.team) {
             continue;
         }
 
         // Wide radius around screen
-        if (IsObjectOnScreen(player.temp_screen_x, player.temp_screen_y, 0.5)) {
+        
+        if (Physics.IsOnScreen(p.Collider.x, 0.5) && Physics.IsOnScreen(p.Collider.y, 0.5)) {
             enemy_near = true;
-            if (highest_size < i32(player.size)) {
-                highest_size = i32(player.size);
+            if (highest_size < i32(p.size)) {
+                highest_size = i32(p.size);
             }
         }
     }
@@ -270,8 +281,8 @@ function UpdateMusic(t: u64): void {
     let music: string = "chill";
 
     if (enemy_near) {
-        const diff: i32 = i32(temp_self!.size) - highest_size;
-        if (diff > 3) {
+        const diff: i32 = highest_size - i32(FrameSelf.size);
+        if (diff > kMusicSizeDelta) {
             music = "fight2";
         } else {
             music = "fight1";
@@ -298,8 +309,6 @@ function UpdateMusic(t: u64): void {
     }
 }
 
-
-
 function OnPlayerKilled(killer: Player, killee: Player): void {
 
 }
@@ -315,9 +324,11 @@ function OnChat(player: Player, m: string): void {
 export function OnConnectionOpen(now_msec: f64): void {
     jsConsoleLog("UDP link up");
 
-    Physics.Initialize(now_msec);
+    Physics.Initialize(now_msec, (killee: Physics.Player, killer: Physics.Player) => {
 
-    player_map.clear();
+    });
+
+    PlayerMap.clear();
     SelfId = -1;
     TimeSync = new Netcode.TimeSync();
 
@@ -410,8 +421,8 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
             for (let i: i32 = 0; i < player_count; ++i) {
                 const player_id: u8 = load<u8>(pptr, 0);
-                if (player_map.has(player_id)) {
-                    const player: Player = player_map.get(player_id);
+                if (PlayerMap.has(player_id)) {
+                    const player: Player = PlayerMap.get(player_id);
 
                     if (player.is_self) {
                         continue;
@@ -480,31 +491,32 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             jsServerLoginBad(s);
 
             offset += 3 + len;
-        } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
+        } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 16) {
             let id: u8 = load<u8>(ptr, 1);
             let player: Player | null = null;
-            if (player_map.has(id)) {
-                player = player_map.get(id);
+            if (PlayerMap.has(id)) {
+                player = PlayerMap.get(id);
             } else {
                 player = new Player();
-                player_map.set(id, player);
-                player.id = id;
+                PlayerMap.set(id, player);
+                player.network_id = id;
             }
 
-            player.score = load<u16>(ptr, 2);
-            player.wins = load<u32>(ptr, 4);
-            player.losses = load<u32>(ptr, 8);
-            player.skin = load<u8>(ptr, 12);
-            player.team = load<u8>(ptr, 13);
+            player.Collider.SetSize(load<u8>(ptr, 2));
 
-            let name_len: u8 = load<u8>(ptr, 14);
-            if (15 + name_len > remaining) {
+            player.score = load<u16>(ptr, 3);
+            player.wins = load<u32>(ptr, 5);
+            player.losses = load<u32>(ptr, 9);
+            player.skin = load<u8>(ptr, 13);
+            player.team = load<u8>(ptr, 14);
+
+            let name_len: u8 = load<u8>(ptr, 15);
+            if (16 + name_len > remaining) {
                 jsConsoleLog("Truncated setplayer");
                 return;
             }
 
-            player.name = String.UTF8.decodeUnsafe(ptr + 15, name_len, false);
-            player.name_data = FontProgram.GenerateLine(player.name);
+            player.SetName(String.UTF8.decodeUnsafe(ptr + 16, name_len, false));
 
             jsConsoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
 
@@ -512,7 +524,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
         } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
             let id: u8 = load<u8>(ptr, 1);
 
-            player_map.delete(id);
+            PlayerMap.delete(id);
 
             jsConsoleLog("RemovePlayer: " + id.toString());
 
@@ -520,9 +532,9 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
         } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
             let killer_id: u8 = load<u8>(ptr, 1);
             let killee_id: u8 = load<u8>(ptr, 2);
-            if (player_map.has(killer_id) && player_map.has(killee_id)) {
-                let killer: Player = player_map.get(killer_id);
-                let killee: Player = player_map.get(killee_id);
+            if (PlayerMap.has(killer_id) && PlayerMap.has(killee_id)) {
+                let killer: Player = PlayerMap.get(killer_id);
+                let killee: Player = PlayerMap.get(killee_id);
                 killer.score = load<u16>(ptr, 3);
                 killee.score = load<u16>(ptr, 5);
 
@@ -538,8 +550,8 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 return;
             }
 
-            if (player_map.has(id)) {
-                let player: Player = player_map.get(id);
+            if (PlayerMap.has(id)) {
+                let player: Player = PlayerMap.get(id);
                 let m: string = String.UTF8.decodeUnsafe(ptr + 4, m_len, false);
 
                 OnChat(player, m);
@@ -589,7 +601,7 @@ let last_ax: f32 = 0.0;
 let last_ay: f32 = 0.0;
 
 export function SendPosition(t: u64): void {
-    if (temp_self == null) {
+    if (!HasFrameSelf) {
         return;
     }
 
@@ -598,16 +610,18 @@ export function SendPosition(t: u64): void {
         return;
     }
 
+    const c: Physics.Player = FrameSelf.Collider;
+
     if (dt < 200 * 4) {
-        if (Mathf.abs(temp_self!.ax - last_ax) < 0.3 &&
-            Mathf.abs(temp_self!.ay - last_ay) < 0.3) {
+        if (Mathf.abs(c.ax - last_ax) < 0.3 &&
+            Mathf.abs(c.ay - last_ay) < 0.3) {
             return;
         }
     }
 
     last_position_send = t;
-    last_ax = temp_self!.ax;
-    last_ay = temp_self!.ay;
+    last_ax = c.ax;
+    last_ay = c.ay;
 
     let buffer: Uint8Array = new Uint8Array(14);
     let ptr: usize = buffer.dataStart;
@@ -617,11 +631,11 @@ export function SendPosition(t: u64): void {
     let remote_ts: u32 = TimeSync.LocalToPeerTime_ToTS23(t);
     Netcode.Store24(ptr, 1, remote_ts);
 
-    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.x), 4);
-    store<u16>(ptr, Netcode.ConvertXto16(temp_self!.y), 6);
-    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vx), 8);
-    store<i16>(ptr, Netcode.ConvertVXto16(temp_self!.vy), 10);
-    store<u16>(ptr, Netcode.ConvertAccelto16(temp_self!.ax, temp_self!.ay), 12);
+    store<u16>(ptr, Netcode.ConvertXto16(c.x), 4);
+    store<u16>(ptr, Netcode.ConvertXto16(c.y), 6);
+    store<i16>(ptr, Netcode.ConvertVXto16(c.vx), 8);
+    store<i16>(ptr, Netcode.ConvertVXto16(c.vy), 10);
+    store<u16>(ptr, Netcode.ConvertAccelto16(c.ax, c.ay), 12);
 
     jsSendUnreliable(buffer);
 }
@@ -656,47 +670,58 @@ export function RenderFrame(
     RenderContext.I.Clear();
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = Physics.ConvertWallclock(now_msec);
+    let local_ts: u64 = Physics.ConvertWallclock(now_msec);
 
     let fx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
     let fy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
 
     let pointer_active: bool = Physics.IsOnScreen(fx, fy);
 
-    if (temp_self != null) {
-        temp_self!.ax = 0;
-        temp_self!.ay = 0;
+    UpdateFrameInfo();
+
+    if (HasFrameSelf) {
+        FrameSelf.Collider.ax = 0;
+        FrameSelf.Collider.ay = 0;
 
         if (pointer_active) {
             const mag: f32 = Mathf.sqrt(fx * fx + fy * fy);
             const dead_zone: f32 = 0.1;
             if (mag > dead_zone) {
                 const accel: f32 = 0.001;
-                temp_self!.ax = f32(fx) * accel / mag;
-                temp_self!.ay = f32(fy) * accel / mag;
+                FrameSelf.Collider.ax = f32(fx) * accel / mag;
+                FrameSelf.Collider.ay = f32(fy) * accel / mag;
             }
         }
 
-        temp_self!.is_self = true;
+        FrameSelf.is_self = true;
     }
 
-    Physics.SimulateTo(t);
+    const server_ts: u64 = TimeSync.TransformLocalToRemote(local_ts);
 
-    SendPosition(t);
+    Physics.SimulateTo(local_ts, server_ts);
+
+    SendPosition(local_ts);
+
+    const players_count: i32 = FramePlayers.length;
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = FramePlayers[i];
+
+        p.on_screen = false;
+    }
 
     const origin_x = ObjectToScreen(0.0, sx);
     const origin_y = ObjectToScreen(0.0, sy);
-    map_prog.DrawMap(-origin_x, -origin_y, 1.0, t);
+    MapProgram.DrawMap(-origin_x, -origin_y, 1.0, local_ts);
 
-    RenderPlayers(t);
-    RenderProjectiles(t);
+    RenderPlayers(local_ts);
+    RenderProjectiles(local_ts);
 
     const sun_radius: f32 = 1.4;
     if (IsObjectOnScreen(origin_x, origin_y, sun_radius)) {
         SunProgram.DrawSun(origin_x, origin_y, sun_radius, t);
     }
 
-    RenderArrows(t);
+    RenderArrows(local_ts);
 
     if (pointer_active) {
         StringProgram.DrawString(
@@ -704,16 +729,16 @@ export function RenderFrame(
             fx,
             fy,
             0.0, 0.0,
-            t);
+            local_ts);
     }
 
     RenderContext.I.Flush();
 
-    if (temp_self != null) {
-        temp_self!.is_self = false;
+    if (HasFrameSelf) {
+        FrameSelf.is_self = false;
     }
 
-    UpdateMusic(t);
+    UpdateMusic(local_ts);
 
     // Collect GC after render tasks are done
     __collect();

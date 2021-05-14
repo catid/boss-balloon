@@ -1,5 +1,5 @@
 import { jsConsoleLog, jsGetMilliseconds } from "./javascript"
-import { RenderTextData } from "../client/render/render_text"
+import { Player as RenderPlayer } from "../client/main"
 
 export namespace Physics {
 
@@ -173,6 +173,9 @@ export class Player {
 
     last_collision_local_ts: u64 = 0;
 
+    // Only used on client side
+    client_render_player: RenderPlayer;
+
     // Number of guns
     gun_count: i32 = 1;
 
@@ -189,9 +192,6 @@ export class Player {
 
     // Size changes
     changes: Array<PlayerSizeChange> = new Array<PlayerSizeChange>();
-
-    // Player name tag
-    render_name_data: RenderTextData | null = null;
 
     // Which collision bin are we in?
     collider_matrix_bin: Array<Player>;
@@ -535,12 +535,12 @@ function IsColliding(p: Player, projectile: Projectile): bool {
     return x*x + y*y < r*r;
 }
 
+let OnProjectileHit: (killee: Player, killer: Player)=>void;
+
 function OnHit(local_ts: u64, p: Player, pp: Projectile): void {
     p.last_collision_local_ts = local_ts;
 
-    if (p.size <= 1) {
-        OnKill(p, pp.shooter);
-    }
+    OnProjectileHit(p, pp.shooter);
 }
 
 function CheckProjectileCollisions(local_ts: u64): void {
@@ -823,7 +823,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
             --i;
         }
 
-        UpdateProjectileMatrix(p);
+        UpdateProjectileMatrix(BombMatrix, p);
     }
 
     const bullet_count: i32 = BulletList.length;
@@ -839,7 +839,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
             --i;
         }
 
-        UpdateProjectileMatrix(p);
+        UpdateProjectileMatrix(BulletMatrix, p);
     }
 
     CheckProjectileCollisions(local_ts);
@@ -871,7 +871,8 @@ export function SimulateTo(local_ts: u64, server_ts: u64): void {
 //------------------------------------------------------------------------------
 // Initialize
 
-export function Initialize(t_msec: f64): void {
+export function Initialize(t_msec: f64, on_projectile_hit: (killee: Player, killer: Player)=>void): void {
+    OnProjectileHit = on_projectile_hit;
     InitTimeConversion(t_msec);
     InitializeCollisions();
 }
