@@ -399,54 +399,60 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
             }
 
             offset += 7;
-        } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 6) {
+        } else if (type == Netcode.UnreliableType.ServerPosition && remaining >= 7) {
             let server_ts: u32 = Netcode.Load24(ptr, 1);
             let local_send_ts = TimeSync.PeerToLocalTime_FromTS23(server_ts);
 
-            const bytes_per_client: i32 = 19;
-            const player_count: i32 = load<u8>(ptr, 4);
-            const expected_bytes: i32 = 5 + player_count * bytes_per_client;
+            const self_size: i32 = load<u8>(ptr, 4);
+
+            const bytes_per_client: i32 = 20;
+            const player_count: i32 = load<u8>(ptr, 5);
+            const expected_bytes: i32 = 6 + player_count * bytes_per_client;
 
             if (remaining < expected_bytes) {
                 jsConsoleLog("Truncated server position");
                 break;
             }
 
-            let pptr: usize = ptr + 5;
+            let pptr: usize = ptr + 6;
 
             for (let i: i32 = 0; i < player_count; ++i) {
                 const player_id: u8 = load<u8>(pptr, 0);
                 if (PlayerMap.has(player_id)) {
+                    const size: u8 = load<u8>(pptr, 1);
                     const p: Player = PlayerMap.get(player_id);
 
                     if (p.is_self) {
                         continue;
                     }
 
-                    const x: f32 = Netcode.Convert16toX(load<u16>(pptr, 1));
-                    const y: f32 = Netcode.Convert16toX(load<u16>(pptr, 3));
-                    const vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 5));
-                    const vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 7));
+                    const c: Physics.Player = p.Collider;
 
-                    const aa: u16 = load<u16>(pptr, 9);
+                    c.x = Netcode.Convert16toX(load<u16>(pptr, 2));
+                    c.y = Netcode.Convert16toX(load<u16>(pptr, 4));
+                    c.vx = Netcode.Convert16toVX(load<i16>(pptr, 6));
+                    c.vy = Netcode.Convert16toVX(load<i16>(pptr, 8));
+
+                    const aa: u16 = load<u16>(pptr, 10);
                     let ax: f32 = 0.0, ay: f32 = 0.0;
                     if (aa != 0) {
                         const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
                         ax = Mathf.cos(angle);
                         ay = Mathf.sin(angle);
                     }
+                    c.ax = ax;
+                    c.ay = ay;
 
-                    const last_shot_x: f32 = Netcode.Convert16toX(load<u16>(pptr, 11));
-                    const last_shot_y: f32 = Netcode.Convert16toX(load<u16>(pptr, 13));
-                    const last_shot_vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 15));
-                    const last_shot_vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 17));
+                    const last_shot_x: f32 = Netcode.Convert16toX(load<u16>(pptr, 12));
+                    const last_shot_y: f32 = Netcode.Convert16toX(load<u16>(pptr, 14));
+                    const last_shot_vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 16));
+                    const last_shot_vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 18));
 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
 
                     Physics.UpdateServerPosition(
                         p.Collider,
                         local_ts, send_delay, server_ts,
-                        x, y, vx, vy,
                         last_shot_x, last_shot_y,
                         last_shot_vx, last_shot_vy);
                 }

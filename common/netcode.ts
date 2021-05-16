@@ -42,15 +42,15 @@ export const kMaxPacketBytes: i32 = 1100;
 */
 
 /*
-    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
+    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)] [SelfSize(1 byte)]
     [Player Count(1 byte)] Repeated (LSB-first): {
-        [PlayerId(8 bits)]
-        [x(16 bits)] [y(16 bits)]
-        [vx(16 bits)] [vy(16 bits)]
-        [accel angle(16 bits)]
-        [last_shot_x(16 bits)] [last_shot_y(16 bits)]
-        [last_shot_vx(16 bits)] [last_shot_vy(16 bits)]
-    } (19 bytes per client)
+        [PlayerId(1 byte)] [Size(1 byte)]
+        [x(2 bytes)] [y(2 bytes)]
+        [vx(2 bytes)] [vy(2 bytes)]
+        [accel angle(2 bytes)]
+        [last_shot_x(2 bytes)] [last_shot_y(2 bytes)]
+        [last_shot_vx(2 bytes)] [last_shot_vy(2 bytes)]
+    } (20 bytes per client)
     Sent by server to update client position.
 
     Size of the ship implies number of guns firing bullets.

@@ -43,8 +43,8 @@ export function OnSendTimer(client: ConnectedClient): void {
     // It's possible to hit someone almost entirely across the map from anywhere.
     const client_count: i32 = temp_clients.length;
     if (client_count > 0) {
-        const max_clients_per_datagram: i32 = 57;
-        const bytes_per_client: i32 = 19;
+        const max_clients_per_datagram: i32 = 55;
+        const bytes_per_client: i32 = 20;
 
         let local_ts: u32 = u32(physics_t) & 0x7fffff;
         let datagram_count: i32 = (client_count + max_clients_per_datagram - 1) / max_clients_per_datagram;
@@ -58,27 +58,29 @@ export function OnSendTimer(client: ConnectedClient): void {
                 actual_count = remaining;
             }
 
-            const buffer: Uint8Array = new Uint8Array(5 + bytes_per_client * actual_count);
+            const buffer: Uint8Array = new Uint8Array(6 + bytes_per_client * actual_count);
             let ptr: usize = buffer.dataStart;
 
             store<u8>(ptr, Netcode.UnreliableType.ServerPosition, 0);
             Netcode.Store24(ptr, 1, local_ts);
-            store<u8>(ptr, u8(actual_count), 4);
+            store<u8>(ptr, u8(client.size), 4);
+            store<u8>(ptr, u8(actual_count), 5);
 
-            let pptr: usize = ptr + 5;
+            let pptr: usize = ptr + 6;
             for (let k: i32 = 0; k < actual_count; ++k) {
                 const client_j = temp_clients[j];
 
                 store<u8>(pptr, client_j.player_id, 0);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.x), 1);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.y), 3);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vx), 5);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vy), 7);
-                store<u16>(pptr, Netcode.ConvertAccelto16(client_j.ax, client_j.ay), 9);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_x), 11);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_y), 13);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vx), 15);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vy), 17);
+                store<u8>(pptr, client_j.size, 1);
+                store<u16>(pptr, Netcode.ConvertXto16(client_j.x), 2);
+                store<u16>(pptr, Netcode.ConvertXto16(client_j.y), 4);
+                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vx), 6);
+                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vy), 8);
+                store<u16>(pptr, Netcode.ConvertAccelto16(client_j.ax, client_j.ay), 10);
+                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_x), 12);
+                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_y), 14);
+                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vx), 16);
+                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vy), 18);
 
                 pptr += bytes_per_client;
                 ++j;

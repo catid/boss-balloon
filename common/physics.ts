@@ -134,17 +134,11 @@ export function GunsForSize(size: u8): i32 {
 //------------------------------------------------------------------------------
 // Player
 
-// Synchronized, queued size change
-class PlayerSizeChange {
-    server_ts: u64;
-    size: u8;
-    constructor(server_ts: u64, size: i32) {
-        this.server_ts = server_ts;
-        this.size = size;
-    }
-}
-
 export class Player {
+    // Indicates that the position data is out of sync with the 
+    dirty: bool = false;
+    t: u64 = 0; // Latest physics update timestamp
+
     // Simulation state
     x: f32 = 0.0;
     y: f32 = 0.0;
@@ -154,20 +148,12 @@ export class Player {
     ay: f32 = 0.0;
 
     last_shot_local_ts: u64 = 0;
+
+    // Last shot info for server
     last_shot_x: f32 = 0.0;
     last_shot_y: f32 = 0.0;
-    last_shot_vx: f32 = 0.0; // Player velocity during shot
+    last_shot_vx: f32 = 0.0;
     last_shot_vy: f32 = 0.0;
-
-    // Copy of peer's future we still need to reach
-    simulation_behind: bool = false;
-    peer_t: u64 = 0;
-    peer_x: f32 = 0.0;
-    peer_y: f32 = 0.0;
-    peer_vx: f32 = 0.0;
-    peer_vy: f32 = 0.0;
-    peer_ax: f32 = 0.0;
-    peer_ay: f32 = 0.0;
 
     size: u8 = 0;
 
@@ -190,9 +176,6 @@ export class Player {
     // Is player dead?
     is_ghost: bool = false;
 
-    // Size changes
-    changes: Array<PlayerSizeChange> = new Array<PlayerSizeChange>();
-
     // Which collision bin are we in?
     collider_matrix_bin: Array<Player>;
     collider_matrix_index: i32 = -1;
@@ -206,20 +189,6 @@ export class Player {
 }
 
 export let PlayerList: Array<Player> = new Array<Player>();
-
-function UpdatePlayerSize(p: Player, server_ts: u64): void {
-    while (p.changes.length > 0) {
-        let change = p.changes[0];
-
-        let dt: i32 = i32(server_ts - change.server_ts);
-        if (dt < 0) {
-            continue;
-        }
-
-        p.SetSize(change.size);
-        p.changes.shift();
-    }
-}
 
 export function CreatePlayer(x: f32, y: f32, size: u8, team: u8): Player {
     const p: Player = new Player();
@@ -247,11 +216,6 @@ export function RemovePlayer(p: Player) {
     }
 }
 
-// Start resize sometime in the future
-export function StartResize(p: Player, server_ts: u64, size: u8): void {
-    p.changes.push(new PlayerSizeChange(server_ts, size));
-}
-
 export function SetRandomSpawnPosition(p: Player) {
     const border: f32 = 2.0;
     const k: f32 = kMapWidth - border * 2.0;
@@ -259,7 +223,6 @@ export function SetRandomSpawnPosition(p: Player) {
     p.y = Mathf.random() * k + border;
     p.vx = 0.0;
     p.vy = 0.0;
-    p.simulation_behind = false;
     p.ax = 0.0;
     p.ay = 0.0;
 
@@ -271,6 +234,9 @@ export function SetRandomSpawnPosition(p: Player) {
 // Projectile
 
 export class Projectile {
+    // Waiting for initial simulation sync
+    dirty: bool = false;
+
     // Simulation state
     x: f32 = 0;
     y: f32 = 0;
@@ -282,7 +248,7 @@ export class Projectile {
     r: f32 = 0.0;
     is_bomb: bool = false;
 
-    // Initial fire time (for expiry)
+    // Initial fire time (for expiry, and simulation sync)
     local_ts: u64 = 0;
     server_ts: u64 = 0;
 
@@ -298,62 +264,73 @@ export class Projectile {
 export let BombList: Array<Projectile> = new Array<Projectile>();
 export let BulletList: Array<Projectile> = new Array<Projectile>();
 
+function IsBombServerTime(server_shot_ts: u64): bool {
+    return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % 4 == 0;
+}
+
+function PlayerFireProjectile(
+    p: Player, local_ts: u64, server_ts: u64, is_bomb: bool,
+    x: f32, y: f32, vx: f32, vy: f32, dirty: bool): void {
+    const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
+    const inv_player_speed: f32 = 1.0 / player_speed;
+
+    // Record last shot player state, useful for server
+    p.last_shot_local_ts = local_ts;
+    p.last_shot_x = x;
+    p.last_shot_y = y;
+    p.last_shot_vx = vx;
+    p.last_shot_vy = vy;
+
+    let angle0: f32 = Mathf.atan2(vy, vx);
+
+    const k: f32 = Mathf.PI * 2.0 / f32(p.gun_count);
+
+    for (let j: i32 = 0; j < p.gun_count; ++j) {
+        const angle: f32 = angle0 + f32(j) * k;
+        const nx: f32 = Mathf.cos(angle);
+        const ny: f32 = Mathf.sin(angle);
+
+        // Get main shot velocity
+        const player_to_bullet_speed = kBulletSpeed * inv_player_speed;
+
+        const pp = new Projectile;
+        pp.x = x;
+        pp.y = y;
+        pp.vx = nx * player_to_bullet_speed + vx;
+        pp.vy = ny * player_to_bullet_speed + vy;
+        pp.local_ts = local_ts;
+        pp.server_ts = server_ts;
+        pp.team = p.team;
+        pp.is_bomb = is_bomb;
+        pp.angle0 = angle0;
+        pp.shooter = p;
+        pp.dirty = dirty;
+
+        if (is_bomb) {
+            BombList.push(pp);
+            pp.r = kBombRadius;
+        } else {
+            BulletList.push(pp);
+            pp.r = kBulletRadius;
+        }
+    }
+}
+
 function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
     const players_count = PlayerList.length;
 
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
-
-        let vx: f32 = p.vx, vy: f32 = p.vy;
-        const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
-        const inv_player_speed: f32 = 1.0 / player_speed;
-
-        // Record last shot player state, useful for server
-        p.last_shot_x = p.x;
-        p.last_shot_y = p.y;
-        p.last_shot_local_ts = local_ts;
-        p.last_shot_vx = vx;
-        p.last_shot_vy = vy;
-
-        let angle0: f32 = Mathf.atan2(vy, vx);
-
-        const k: f32 = Mathf.PI * 2.0 / f32(p.gun_count);
-
-        for (let j: i32 = 0; j < p.gun_count; ++j) {
-            const angle: f32 = angle0 + f32(j) * k;
-            const nx: f32 = Mathf.cos(angle);
-            const ny: f32 = Mathf.sin(angle);
-
-            // Get main shot velocity
-            const player_to_bullet_speed = kBulletSpeed * inv_player_speed;
-
-            const pp = new Projectile;
-            pp.x = p.x;
-            pp.y = p.y;
-            pp.vx = nx * player_to_bullet_speed + vx;
-            pp.vy = ny * player_to_bullet_speed + vy;
-            pp.local_ts = local_ts;
-            pp.server_ts = server_ts;
-            pp.team = p.team;
-            pp.is_bomb = is_bomb;
-            pp.angle0 = angle0;
-            pp.shooter = p;
-
-            if (is_bomb) {
-                BombList.push(pp);
-                pp.r = kBombRadius;
-            } else {
-                BulletList.push(pp);
-                pp.r = kBulletRadius;
-            }
-        }
+        PlayerFireProjectile(
+            p, local_ts, server_ts, is_bomb,
+            p.x, p.y, p.vx, p.vy, false);
     }
 }
 
 // The tricky thing here is the time sync is not stable
 let last_shot_server_ts: u64 = 0;
 
-function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
+function GeneratePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     const server_to_local: i64 = i64(local_ts - server_ts);
 
     const last_fuzzy_ts: i64 = i64(last_shot_server_ts) - (kProjectileInterval / 2);
@@ -378,7 +355,7 @@ function UpdatePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     let server_shot_ts: u64 = final_shot_ts - shot_count * kProjectileInterval;
 
     for (let i: u32 = 0; i < shot_count; ++i) {
-        const is_bomb: bool = (server_shot_ts / kProjectileInterval) % 4 == 0;
+        const is_bomb: bool = IsBombServerTime(server_shot_ts);
 
         const local_shot_ts: u64 = u64(server_to_local + server_shot_ts);
         FireProjectiles(local_shot_ts, server_shot_ts, is_bomb);
@@ -748,9 +725,7 @@ export function ForEachPlayerOnScreen(callback: (p: Player, sx: f32, sy: f32)=>v
 //------------------------------------------------------------------------------
 // Simulator
 
-function SimulatePlayerStep(p: Player, dt: f32, local_ts: u64, server_ts: u64): void {
-    UpdatePlayerSize(p, server_ts);
-
+function SimulatePlayerStep(p: Player, dt: f32): void {
     const inv_mass: f32 = 1.0 / p.mass;
 
     let ax: f32 = p.ax * inv_mass;
@@ -800,70 +775,150 @@ function SimulateProjectileStep(p: Projectile, dt: f32): void {
     p.y = MapModX(p.y + p.vy * dt);
 }
 
+// Handle player that is out of sync with simulation
+function ResyncDirtyPlayer(p: Player, local_ts: u64): void {
+    let dt: i32 = i32(local_ts - p.t);
+
+    // If current simulation time is behind the position timetamp:
+    if (dt < 0) {
+        // Pause simulation for this player until we catch up.
+        // The player will freeze on the screen, but it should be brief
+        // because the simulation only lags behind a little.
+        return;
+    }
+
+    const step: i32 = 40;
+
+    // FIXME: Collisions during roll-up
+
+    while (dt >= step) {
+        SimulatePlayerStep(p, f32(step) * 0.25);
+        dt -= step;
+    }
+
+    if (dt > 0) {
+        SimulatePlayerStep(p, f32(dt) * 0.25);
+    }
+
+    // Sync complete
+    p.dirty = false;
+}
+
+// Handle projectile that is out of sync with simulation
+function ResyncDirtyProjectile(p: Projectile, local_ts: u64): void {
+    let dt: i32 = i32(local_ts - p.local_ts);
+
+    // If current simulation time is behind the position timetamp:
+    if (dt < 0) {
+        // Pause simulation for this projectile until we catch up.
+        // The projectile will freeze on the screen, but it should be brief
+        // because the simulation only lags behind a little.
+        return;
+    }
+
+    const step: i32 = 40;
+
+    // FIXME: Collisions during roll-up
+
+    while (dt >= step) {
+        SimulateProjectileStep(p, f32(step) * 0.25);
+        dt -= step;
+    }
+
+    if (dt > 0) {
+        SimulateProjectileStep(p, f32(dt) * 0.25);
+    }
+
+    // Sync complete
+    p.dirty = false;
+}
+
 function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
     const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
 
-        SimulatePlayerStep(p, dt, local_ts, server_ts);
+        // If needs re-sync:
+        if (p.dirty) {
+            ResyncDirtyPlayer(p, local_ts);
+        } else {
+            SimulatePlayerStep(p, dt);
+        }
     }
 
-    UpdatePlayerProjectiles(local_ts, server_ts);
+    // FIXME: For now we do not generate projectiles on the client side.
+    // In the future we can do latency hiding by predicting where the bullets will be,
+    // and then "correct" the projectile positions when the server sends us info.
+    if (local_ts == server_ts) {
+        GeneratePlayerProjectiles(local_ts, server_ts);
+    }
 
     const bomb_count: i32 = BombList.length;
     for (let i: i32 = 0; i < bomb_count; ++i) {
         const p = BombList[i];
 
-        SimulateProjectileStep(p, dt);
+        // If needs re-sync:
+        if (p.dirty) {
+            ResyncDirtyProjectile(p, local_ts);
+        } else {
+            SimulateProjectileStep(p, dt);
+        }
 
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             MatrixRemoveProjectile(p);
             BombList[i] = BombList[BombList.length - 1];
             BombList.length--;
             --i;
+        } else {
+            UpdateProjectileMatrix(BombMatrix, p);
         }
-
-        UpdateProjectileMatrix(BombMatrix, p);
     }
 
     const bullet_count: i32 = BulletList.length;
     for (let i: i32 = 0; i < bullet_count; ++i) {
         const p = BulletList[i];
 
-        SimulateProjectileStep(p, dt);
+        // If needs re-sync:
+        if (p.dirty) {
+            ResyncDirtyProjectile(p, local_ts);
+        } else {
+            SimulateProjectileStep(p, dt);
+        }
 
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             MatrixRemoveProjectile(p);
             BulletList[i] = BulletList[BulletList.length - 1];
             BulletList.length--;
             --i;
+        } else {
+            UpdateProjectileMatrix(BulletMatrix, p);
         }
-
-        UpdateProjectileMatrix(BulletMatrix, p);
     }
 
     CheckProjectileCollisions(local_ts);
 }
 
 
-let last_ts: u64 = 0;
+let PhysicsMasterTimestamp: u64 = 0;
 
 export function SimulateTo(local_ts: u64, server_ts: u64): void {
-    let dt: i32 = i32(local_ts - last_ts);
+    let dt: i32 = i32(local_ts - PhysicsMasterTimestamp);
+
+    // Roll back server time to current PhysicsMasterTimestamp
     server_ts -= dt;
 
     const step: i32 = 40;
 
     while (dt >= step) {
-        SimulationStep(f32(step) * 0.25, last_ts, server_ts);
+        SimulationStep(f32(step) * 0.25, PhysicsMasterTimestamp, server_ts);
         dt -= step;
-        last_ts += step;
+        PhysicsMasterTimestamp += step;
         server_ts += step;
     }
 
     if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25, last_ts, server_ts);
-        last_ts += dt;
+        SimulationStep(f32(dt) * 0.25, PhysicsMasterTimestamp, server_ts);
+        PhysicsMasterTimestamp += dt;
     }
 }
 
@@ -871,19 +926,50 @@ export function SimulateTo(local_ts: u64, server_ts: u64): void {
 //------------------------------------------------------------------------------
 // Client
 
+function clampi32(x: i32, minval: i32, maxval: i32): i32 {
+    if (x <= minval) {
+        return minval;
+    }
+    if (x >= maxval) {
+        return maxval;
+    }
+    return x;
+}
+
+// We assume that the player object has been updated by the caller to the
+// provided x, y, vx, vy, ax, ay members.
 export function UpdateServerPosition(
     p: Physics.Player,
     local_ts: u64, send_delay: i32, server_ts: u64,
-    x: f32, y: f32, vx: f32, vy: f32,
-    last_shot_x: f32, last_shot_y: f32,
-    last_shot_vx: f32, last_shot_vy: f32): void {
-    if (send_delay < 1) {
-        send_delay = 1;
-    }
+    shot_x: f32, shot_y: f32,
+    shot_vx: f32, shot_vy: f32): void
+{
+    // Send delay is always at least 1/2 millisecond,
+    // and the ping time to the other side of the globe is under 200 milliseconds,
+    // so bound the upper end too.
+    send_delay = clampi32(send_delay, 2, 500 * 4);
 
-    const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
     const local_sent_ts: u64 = local_ts - send_delay;
+
+    // Next time we update the physics simulation, we'll fix this.
+    // We assume that if the client is ahead of the server's simulation it's just by a little
+    // bit and doesn't cause bullets to miss.
+    p.t = local_sent_ts;
+
+    // If a new shot has been fired:
+    const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
+    const server_shot_ts: u64 = server_ts - last_shot_offset;
     const local_shot_ts: u64 = local_sent_ts - last_shot_offset;
+    const shot_dt: i32 = Math.abs(i32(p.last_shot_local_ts - local_shot_ts));
+    if (shot_dt >= kProjectileInterval / 2) {
+        p.last_shot_local_ts = local_shot_ts;
+
+        const is_bomb: bool = IsBombServerTime(server_shot_ts);
+
+        PlayerFireProjectile(
+            p, local_shot_ts, server_shot_ts, is_bomb,
+            shot_x, shot_y, shot_vx, shot_vy, true);
+    }
 }
 
 
