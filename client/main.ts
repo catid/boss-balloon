@@ -123,8 +123,12 @@ export function UpdateFrameInfo(): void {
 //------------------------------------------------------------------------------
 // Render
 
+let render_player_ts: u64;
+
 function RenderPlayers(local_ts: u64): void {
-    Physics.ForEachPlayerOnScreen(local_ts, (local_ts: u64, p: Physics.PlayerCollider, sx: f32, sy: f32) => {
+    render_player_ts = local_ts;
+
+    Physics.ForEachPlayerOnScreen((p: Physics.PlayerCollider, sx: f32, sy: f32) => {
         // Calculate shine from sun
         let sun_x: f32 = p.x;
         if (sun_x > Physics.kMapWidth * 0.5) {
@@ -140,9 +144,9 @@ function RenderPlayers(local_ts: u64): void {
 
         PlayerProgram.DrawPlayer(
             kTeamColors[p.team],
-            sx, sy, p.r, shine_angle, shine_dist, local_ts);
+            sx, sy, p.r, shine_angle, shine_dist, render_player_ts);
 
-        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, local_ts);
+        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, render_player_ts);
 
         const r: Player = p.client_render_player!;
 
@@ -152,24 +156,26 @@ function RenderPlayers(local_ts: u64): void {
             FontProgram.Render(
                 RenderTextHorizontal.Center, RenderTextVertical.Center,
                 sx, sy + p.r * Physics.MapToScreen,
-                0.32 * Physics.InvScreenScale / r.render_name_data.width, r.render_name_data);
+                0.32 * Physics.InvScreenScale / r.render_name_data!.width, r.render_name_data!);
         }
     });
 }
 
+let proj_angle: f32;
+
 function RenderProjectiles(local_ts: u64): void {
-    const angle: f32 = f32(local_ts % 1000) * Mathf.PI * 2.0 / 1000.0;
+    proj_angle = f32(local_ts % 1000) * Mathf.PI * 2.0 / 1000.0;
 
     BombProgram.BeginBombs(local_ts, 0.1 * Physics.InvScreenScale);
 
     Physics.ForEachBombOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => {
-        BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + angle);
+        BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + proj_angle);
     });
 
     BulletProgram.BeginBullets(local_ts, 0.1 * Physics.InvScreenScale);
 
     Physics.ForEachBulletOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => {
-        BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + angle);
+        BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + proj_angle);
     });
 }
 

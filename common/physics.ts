@@ -742,7 +742,7 @@ export function ForEachBulletOnScreen(callback: (p: Projectile, sx: f32, sy: f32
     }
 }
 
-export function ForEachPlayerOnScreen(local_ts: u64, callback: (local_ts: u64, p: PlayerCollider, sx: f32, sy: f32) => void): void {
+export function ForEachPlayerOnScreen(callback: (p: PlayerCollider, sx: f32, sy: f32) => void): void {
     const r: f32 = ScreenToMap + kMaxPlayerRadius;
 
     const x0: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterX - r));
@@ -780,7 +780,7 @@ export function ForEachPlayerOnScreen(local_ts: u64, callback: (local_ts: u64, p
                     continue;
                 }
 
-                callback(local_ts, p, sx, sy);
+                callback(p, sx, sy);
             }
         }
     }
