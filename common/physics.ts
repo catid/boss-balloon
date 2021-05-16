@@ -1,5 +1,5 @@
 import { jsConsoleLog, jsGetMilliseconds } from "./javascript"
-import { Player, Player as RenderPlayer } from "../client/main"
+import { Player as RenderPlayer } from "../client/main"
 
 export namespace Physics {
 
@@ -232,7 +232,7 @@ export class PlayerCollider {
     is_ghost: bool = false;
 
     // Which collision bin are we in?
-    collider_matrix_bin: Array<PlayerCollider> | null = null;
+    collider_matrix_bin: Array<Physics.PlayerCollider> | null = null;
     collider_matrix_index: i32 = -1;
 
     SetSize(size: u8): void {
@@ -243,10 +243,10 @@ export class PlayerCollider {
     }
 }
 
-let PlayerList: Array<PlayerCollider> = new Array<PlayerCollider>();
+let PlayerList: Array<Physics.PlayerCollider> = new Array<Physics.PlayerCollider>();
 
-export function CreatePlayerCollider(team: u8): PlayerCollider {
-    const p: PlayerCollider = new PlayerCollider();
+export function CreatePlayerCollider(team: u8): Physics.PlayerCollider {
+    const p: Physics.PlayerCollider = new Physics.PlayerCollider();
     p.team = team;
 
     // Initially creates a ghost player until we get position data
@@ -257,7 +257,7 @@ export function CreatePlayerCollider(team: u8): PlayerCollider {
     return p;
 }
 
-export function RemovePlayerCollider(p: PlayerCollider): void {
+export function RemovePlayerCollider(p: Physics.PlayerCollider): void {
     // Remove from collision matrix
     MatrixRemovePlayer(p);
 
@@ -275,7 +275,7 @@ export function RemovePlayerCollider(p: PlayerCollider): void {
     }
 }
 
-export function SetRandomSpawnPosition(p: PlayerCollider): void {
+export function SetRandomSpawnPosition(p: Physics.PlayerCollider): void {
     const border: f32 = 2.0;
     const k: f32 = kMapWidth - border * 2.0;
     p.x = Mathf.random() * k + border;
@@ -317,22 +317,22 @@ export class Projectile {
     collider_matrix_bin: Array<Projectile> | null = null;
     collider_matrix_index: i32 = -1;
 
-    shooter: PlayerCollider;
+    shooter: Physics.PlayerCollider;
 
-    constructor(shooter: PlayerCollider) {
+    constructor(shooter: Physics.PlayerCollider) {
         this.shooter = shooter;
     }
 }
 
-export let BombList: Array<Projectile> = new Array<Projectile>();
-export let BulletList: Array<Projectile> = new Array<Projectile>();
+export let BombList: Array<Physics.Projectile> = new Array<Physics.Projectile>();
+export let BulletList: Array<Physics.Projectile> = new Array<Physics.Projectile>();
 
 function IsBombServerTime(server_shot_ts: u64): bool {
     return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % 4 == 0;
 }
 
 function PlayerFireProjectile(
-    p: PlayerCollider, local_ts: u64, server_ts: u64, is_bomb: bool,
+    p: Physics.PlayerCollider, local_ts: u64, server_ts: u64, is_bomb: bool,
     x: f32, y: f32, vx: f32, vy: f32, dirty: bool): void {
     const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
     const inv_player_speed: f32 = 1.0 / player_speed;
@@ -428,7 +428,7 @@ function GeneratePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     last_shot_server_ts = final_shot_ts;
 }
 
-function RemovePlayerProjectiles(p: PlayerCollider): void {
+function RemovePlayerProjectiles(p: Physics.PlayerCollider): void {
     for (let i: i32 = 0; i < BombList.length; ++i) {
         const pp = BombList[i];
         if (pp.shooter == p) {
@@ -453,9 +453,9 @@ function RemovePlayerProjectiles(p: PlayerCollider): void {
 //------------------------------------------------------------------------------
 // Collision Detection
 
-export let PlayerMatrix = new Array<Array<PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
-export let BombMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
-export let BulletMatrix = new Array<Array<Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
+export let PlayerMatrix = new Array<Array<Physics.PlayerCollider>>(kPlayerMatrixWidth * kPlayerMatrixWidth);
+export let BombMatrix = new Array<Array<Physics.Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
+export let BulletMatrix = new Array<Array<Physics.Projectile>>(kProjectileMatrixWidth * kProjectileMatrixWidth);
 
 // This assumes x ranges from [0, kPlayerMatrixWidth)
 function PositionToPlayerMatrixTile(x: f32): i32 {
@@ -487,17 +487,17 @@ function PositionToProjectileMatrixTile(x: f32): i32 {
 
 function InitializeCollisions(): void {
     for (let i: i32 = 0; i < kPlayerMatrixWidth * kPlayerMatrixWidth; ++i) {
-        PlayerMatrix[i] = new Array<PlayerCollider>();
+        PlayerMatrix[i] = new Array<Physics.PlayerCollider>();
     }
     for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
-        BombMatrix[i] = new Array<Projectile>();
+        BombMatrix[i] = new Array<Physics.Projectile>();
     }
     for (let i: i32 = 0; i < kProjectileMatrixWidth * kProjectileMatrixWidth; ++i) {
-        BulletMatrix[i] = new Array<Projectile>();
+        BulletMatrix[i] = new Array<Physics.Projectile>();
     }
 }
 
-function UpdatePlayerMatrix(p: PlayerCollider): void {
+function UpdatePlayerMatrix(p: Physics.PlayerCollider): void {
     let tx: u32 = PositionToPlayerMatrixTile(p.x);
     let ty: u32 = PositionToPlayerMatrixTile(p.y);
 
@@ -549,7 +549,7 @@ function UpdateProjectileMatrix(m: Array<Array<Projectile>>, p: Projectile): voi
     new_bin.push(p);
 }
 
-function MatrixRemovePlayer(p: PlayerCollider): void {
+function MatrixRemovePlayer(p: Physics.PlayerCollider): void {
     if (p.collider_matrix_index != -1) {
         let old_bin = p.collider_matrix_bin!;
         old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
@@ -558,7 +558,7 @@ function MatrixRemovePlayer(p: PlayerCollider): void {
     }
 }
 
-function MatrixRemoveProjectile(p: Projectile): void {
+function MatrixRemoveProjectile(p: Physics.Projectile): void {
     if (p.collider_matrix_index != -1) {
         let old_bin = p.collider_matrix_bin!;
         old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
@@ -567,16 +567,16 @@ function MatrixRemoveProjectile(p: Projectile): void {
     }
 }
 
-function IsColliding(p: PlayerCollider, projectile: Projectile): bool {
+function IsColliding(p: Physics.PlayerCollider, projectile: Physics.Projectile): bool {
     const x: f32 = p.x - projectile.x;
     const y: f32 = p.y - projectile.y;
     const r: f32 = projectile.r + p.r;
     return x*x + y*y < r*r;
 }
 
-let OnProjectileHit: (killee: PlayerCollider, killer: PlayerCollider)=>void;
+let OnProjectileHit: (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider)=>void;
 
-function OnHit(local_ts: u64, p: PlayerCollider, pp: Projectile): void {
+function OnHit(local_ts: u64, p: Physics.PlayerCollider, pp: Projectile): void {
     p.last_collision_local_ts = local_ts;
 
     OnProjectileHit(p, pp.shooter);
@@ -742,7 +742,7 @@ export function ForEachBulletOnScreen(callback: (p: Projectile, sx: f32, sy: f32
     }
 }
 
-export function ForEachPlayerOnScreen(callback: (p: PlayerCollider, sx: f32, sy: f32) => void): void {
+export function ForEachPlayerOnScreen(callback: (p: Physics.PlayerCollider, sx: f32, sy: f32) => void): void {
     const r: f32 = ScreenToMap + kMaxPlayerRadius;
 
     const x0: i32 = PositionToPlayerMatrixTile(MapModX(ScreenCenterX - r));
@@ -790,7 +790,7 @@ export function ForEachPlayerOnScreen(callback: (p: PlayerCollider, sx: f32, sy:
 //------------------------------------------------------------------------------
 // Simulator
 
-function SimulatePlayerStep(p: PlayerCollider, dt: f32): void {
+function SimulatePlayerStep(p: Physics.PlayerCollider, dt: f32): void {
     const inv_mass: f32 = 1.0 / p.mass;
 
     let ax: f32 = p.ax * inv_mass;
@@ -841,7 +841,7 @@ function SimulateProjectileStep(p: Projectile, dt: f32): void {
 }
 
 // Handle player that is out of sync with simulation
-function ResyncDirtyPlayer(p: PlayerCollider, local_ts: u64): void {
+function ResyncDirtyPlayer(p: Physics.PlayerCollider, local_ts: u64): void {
     let dt: i32 = i32(local_ts - p.t);
 
     // If current simulation time is behind the position timetamp:
