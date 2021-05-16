@@ -98,7 +98,7 @@ export enum UnreliableType {
     Player login rejected and reason provided.
 
 
-    [ReliableType.SetPlayer(1 byte)] [PlayerId(1 byte)] [Size(1 byte)]
+    [ReliableType.SetPlayer(1 byte)] [PlayerId(1 byte)]
     [Score(2 bytes)] [Wins(4 bytes)] [Losses(4 bytes)]
     [Skin(1 byte)] [Team(1 byte)] [Name Length(1 byte)] [Name(X bytes)]
     Add/update a player on the player list.
@@ -739,7 +739,6 @@ export function MakeServerLoginBad(m: string): Uint8Array | null {
 
 export function MakeSetPlayer(
     id: u8,
-    size: u8,
     score: u16,
     wins: u32,
     losses: u32,
@@ -753,23 +752,22 @@ export function MakeSetPlayer(
         return null;
     }
 
-    let buffer: Uint8Array = new Uint8Array(16 + name_len);
+    let buffer: Uint8Array = new Uint8Array(15 + name_len);
     let ptr: usize = buffer.dataStart;
 
     store<u8>(ptr, Netcode.ReliableType.SetPlayer, 0);
     store<u8>(ptr, id, 1);
-    store<u8>(ptr, size, 2);
-    store<u16>(ptr, score, 3);
-    store<u32>(ptr, wins, 5);
-    store<u32>(ptr, losses, 9);
-    store<u8>(ptr, skin, 13);
-    store<u8>(ptr, team, 14);
-    store<u8>(ptr, u8(name_len), 15);
+    store<u16>(ptr, score, 2);
+    store<u32>(ptr, wins, 4);
+    store<u32>(ptr, losses, 8);
+    store<u8>(ptr, skin, 12);
+    store<u8>(ptr, team, 13);
+    store<u8>(ptr, u8(name_len), 14);
 
     String.UTF8.encodeUnsafe(
         changetype<usize>(name),
         name.length,
-        ptr + 17,
+        ptr + 15,
         false);
 
     return buffer;

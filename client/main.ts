@@ -57,7 +57,7 @@ export let SunProgram: RenderSunProgram;
 //------------------------------------------------------------------------------
 // Tools
 
-function clamp(x: f32, maxval: f32, minval: f32): f32 {
+function clamp_f32(x: f32, maxval: f32, minval: f32): f32 {
     return max(maxval, min(minval, x));
 }
 
@@ -78,23 +78,21 @@ export class Player {
     wins: u32 = 0;
     losses: u32 = 0;
     skin: u8 = 0;
-    team: u8 = 0;
-    name: string = "";
 
     is_self: bool = false;
-
-    size: u8 = 0;
 
     temp_screen_x: f32 = 0;
     temp_screen_y: f32 = 0;
     on_screen: bool = false;
 
-    Collider: Physics.Player;
+    Collider: Physics.PlayerCollider;
 
+    name: string = "...";
     render_name_data: RenderTextData | null = null;
 
-    constructor() {
-        Physics.CreatePlayer();
+    constructor(team: u8) {
+        this.Collider = Physics.CreatePlayerCollider(team);
+        this.Collider.client_render_player = this;
     }
 
     SetName(name: string): void {
@@ -125,8 +123,9 @@ export function UpdateFrameInfo(): void {
 //------------------------------------------------------------------------------
 // Render
 
-function RenderPlayers(t: u64): void {
-    Physics.ForEachPlayerOnScreen((p: Physics.Player, sx: f32, sy: f32) {
+function RenderPlayers(local_ts: u64): void {
+    Physics.ForEachPlayerOnScreen(local_ts, (local_ts: u64, p: Physics.PlayerCollider, sx: f32, sy: f32) => {
+        // Calculate shine from sun
         let sun_x: f32 = p.x;
         if (sun_x > Physics.kMapWidth * 0.5) {
             sun_x -= Physics.kMapWidth;
@@ -137,44 +136,44 @@ function RenderPlayers(t: u64): void {
         }
         const shine_angle: f32 = Mathf.atan2(sun_y, sun_x);
         const shine_max: f32 = 10000.0;
-        const shine_dist: f32 = clamp(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
+        const shine_dist: f32 = clamp_f32(1.0 - (sun_x * sun_x + sun_y * sun_y) / (shine_max * shine_max), 0.5, 1.0);
 
         PlayerProgram.DrawPlayer(
             kTeamColors[p.team],
-            sx, sy, p.r, shine_angle, shine_dist, t);
+            sx, sy, p.r, shine_angle, shine_dist, local_ts);
 
-        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, t);
+        StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, local_ts);
 
-        const r: Player = p.client_render_player;
+        const r: Player = p.client_render_player!;
 
         if (r.render_name_data != null) {
             FontProgram.BeginRender();
             FontProgram.SetColor(kTeamTextColors[p.team],  kTextStrokeColor);
             FontProgram.Render(
                 RenderTextHorizontal.Center, RenderTextVertical.Center,
-                sx, sy + 0.06,
-                0.32/r.render_name_data.width, r.render_name_data);
+                sx, sy + p.r * Physics.MapToScreen,
+                0.32 * Physics.InvScreenScale / r.render_name_data.width, r.render_name_data);
         }
     });
 }
 
-function RenderProjectiles(t: u64): void {
-    const angle: f32 = f32(t % 1000) * Mathf.PI * 2.0 / 1000.0;
+function RenderProjectiles(local_ts: u64): void {
+    const angle: f32 = f32(local_ts % 1000) * Mathf.PI * 2.0 / 1000.0;
 
-    BombProgram.BeginBombs(t, 0.1);
+    BombProgram.BeginBombs(local_ts, 0.1 * Physics.InvScreenScale);
 
     Physics.ForEachBombOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => {
         BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + angle);
     });
 
-    BulletProgram.BeginBullets(t, 0.1);
+    BulletProgram.BeginBullets(local_ts, 0.1 * Physics.InvScreenScale);
 
     Physics.ForEachBulletOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => {
         BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + angle);
     });
 }
 
-function RenderArrows(t: u64): void {
+function RenderArrows(local_ts: u64): void {
     const players_count = FramePlayers.length;
 
     if (players_count == 0) {
@@ -193,7 +192,7 @@ function RenderArrows(t: u64): void {
         const dist: f32 = Mathf.sqrt(x * x + y * y);
         const scale_min: f32 = 0.01;
         const scale_max: f32 = 0.04;
-        const scale: f32 = scale_min + clamp(scale_max - dist * 0.004, 0.0, scale_max - scale_min);
+        const scale: f32 = scale_min + clamp_f32(scale_max - dist * 0.004, 0.0, scale_max - scale_min);
 
         const angle: f32 = Mathf.atan2(y, x);
 
@@ -232,8 +231,8 @@ function RenderArrows(t: u64): void {
         }
 
         ArrowProgram.DrawArrow(
-            kTeamColors[p.team],
-            x, y, scale, angle, t);
+            kTeamColors[p.Collider.team],
+            x, y, scale, angle, local_ts);
     }
 }
 
@@ -264,16 +263,16 @@ function UpdateMusic(t: u64): void {
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = FramePlayers[i];
 
-        if (p.team == FrameSelf.team) {
+        if (p.Collider.team == FrameSelf.Collider.team) {
             continue;
         }
 
         // Wide radius around screen
-        
-        if (Physics.IsOnScreen(p.Collider.x, 0.5) && Physics.IsOnScreen(p.Collider.y, 0.5)) {
+
+        if (Physics.IsMapObjectOnScreen(p.Collider.x, p.Collider.y, p.Collider.r * Physics.MapToScreen)) {
             enemy_near = true;
-            if (highest_size < i32(p.size)) {
-                highest_size = i32(p.size);
+            if (highest_size < i32(p.Collider.size)) {
+                highest_size = i32(p.Collider.size);
             }
         }
     }
@@ -281,7 +280,7 @@ function UpdateMusic(t: u64): void {
     let music: string = "chill";
 
     if (enemy_near) {
-        const diff: i32 = highest_size - i32(FrameSelf.size);
+        const diff: i32 = highest_size - i32(FrameSelf.Collider.size);
         if (diff > kMusicSizeDelta) {
             music = "fight2";
         } else {
@@ -310,11 +309,11 @@ function UpdateMusic(t: u64): void {
 }
 
 function OnPlayerKilled(killer: Player, killee: Player): void {
-
+    jsConsoleLog(killer.name + " killed " + killee.name);
 }
 
-function OnChat(player: Player, m: string): void {
-    jsConsoleLog("Chat: " + m.toString());
+function OnChat(p: Player, m: string): void {
+    jsConsoleLog("<" + p.name + "> " + m.toString());
 }
 
 
@@ -324,8 +323,8 @@ function OnChat(player: Player, m: string): void {
 export function OnConnectionOpen(now_msec: f64): void {
     jsConsoleLog("UDP link up");
 
-    Physics.Initialize(now_msec, (killee: Physics.Player, killer: Physics.Player) => {
-
+    Physics.Initialize(now_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
+        // FIXME: Handle bullet collision
     });
 
     PlayerMap.clear();
@@ -426,7 +425,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                         continue;
                     }
 
-                    const c: Physics.Player = p.Collider;
+                    const c: Physics.PlayerCollider = p.Collider;
 
                     c.x = Netcode.Convert16toX(load<u16>(pptr, 2));
                     c.y = Netcode.Convert16toX(load<u16>(pptr, 4));
@@ -498,32 +497,32 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             jsServerLoginBad(s);
 
             offset += 3 + len;
-        } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 16) {
+        } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
             let id: u8 = load<u8>(ptr, 1);
+            const team: u8 = load<u8>(ptr, 13);
+
             let player: Player | null = null;
             if (PlayerMap.has(id)) {
                 player = PlayerMap.get(id);
             } else {
-                player = new Player();
+                player = new Player(team);
                 PlayerMap.set(id, player);
                 player.network_id = id;
             }
 
-            player.Collider.SetSize(load<u8>(ptr, 2));
+            player.score = load<u16>(ptr, 2);
+            player.wins = load<u32>(ptr, 4);
+            player.losses = load<u32>(ptr, 8);
+            player.skin = load<u8>(ptr, 12);
+            player.Collider.team = team;
 
-            player.score = load<u16>(ptr, 3);
-            player.wins = load<u32>(ptr, 5);
-            player.losses = load<u32>(ptr, 9);
-            player.skin = load<u8>(ptr, 13);
-            player.team = load<u8>(ptr, 14);
-
-            let name_len: u8 = load<u8>(ptr, 15);
-            if (16 + name_len > remaining) {
+            let name_len: u8 = load<u8>(ptr, 14);
+            if (15 + name_len > remaining) {
                 jsConsoleLog("Truncated setplayer");
                 return;
             }
 
-            player.SetName(String.UTF8.decodeUnsafe(ptr + 16, name_len, false));
+            player.SetName(String.UTF8.decodeUnsafe(ptr + 15, name_len, false));
 
             jsConsoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
 
@@ -531,7 +530,13 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
         } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
             let id: u8 = load<u8>(ptr, 1);
 
-            PlayerMap.delete(id);
+            if (PlayerMap.has(id)) {
+                const player = PlayerMap.get(id);
+
+                Physics.RemovePlayerCollider(player.Collider);
+
+                PlayerMap.delete(id);
+            }
 
             jsConsoleLog("RemovePlayer: " + id.toString());
 
@@ -617,7 +622,7 @@ export function SendPosition(t: u64): void {
         return;
     }
 
-    const c: Physics.Player = FrameSelf.Collider;
+    const c: Physics.PlayerCollider = FrameSelf.Collider;
 
     if (dt < 200 * 4) {
         if (Mathf.abs(c.ax - last_ax) < 0.3 &&
@@ -678,69 +683,90 @@ export function RenderFrame(
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let local_ts: u64 = Physics.ConvertWallclock(now_msec);
+    const server_ts: u64 = TimeSync.TransformLocalToRemote(local_ts);
 
-    let fx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
-    let fy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
+    // Update positions to current time
+    Physics.SimulateTo(local_ts, server_ts);
 
-    let pointer_active: bool = Physics.IsOnScreen(fx, fy);
-
+    // Update HasFrameSelf, FrameSelf, FramePlayers
     UpdateFrameInfo();
 
+    if (HasFrameSelf) {
+        Physics.SetScreenCenter(FrameSelf.Collider.x, FrameSelf.Collider.y);
+        Physics.SetScreenScale(Physics.ScaleForSize(FrameSelf.Collider.size));
+    } else {
+        Physics.SetScreenCenter(0.0, 0.0);
+        Physics.SetScreenScale(1.0);
+    }
+
+    // Render screen coordinates for finger touch
+    // Note: Render screen origin is (0,0) and corners are (-1,-1) -> (1,1)
+    let fsx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
+    let fsy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
+
+    // Is the finger on the screen?
+    let finger_on_screen: bool = Physics.IsScreenXYVisible(fsx, fsy, 0.0);
+
+    // Now change acceleration at current time
     if (HasFrameSelf) {
         FrameSelf.Collider.ax = 0;
         FrameSelf.Collider.ay = 0;
 
-        if (pointer_active) {
-            const mag: f32 = Mathf.sqrt(fx * fx + fy * fy);
+        if (finger_on_screen) {
+            const mag: f32 = Mathf.sqrt(fsx * fsx + fsy * fsy);
             const dead_zone: f32 = 0.1;
             if (mag > dead_zone) {
                 const accel: f32 = 0.001;
-                FrameSelf.Collider.ax = f32(fx) * accel / mag;
-                FrameSelf.Collider.ay = f32(fy) * accel / mag;
+                FrameSelf.Collider.ax = fsx * accel / mag;
+                FrameSelf.Collider.ay = fsy * accel / mag;
             }
         }
 
         FrameSelf.is_self = true;
     }
 
-    const server_ts: u64 = TimeSync.TransformLocalToRemote(local_ts);
-
-    Physics.SimulateTo(local_ts, server_ts);
-
+    // Include latest position and acceleration in position update message
     SendPosition(local_ts);
 
+    // Rendering:
+
+    // Clear on_screen flag for all players
     const players_count: i32 = FramePlayers.length;
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = FramePlayers[i];
-
         p.on_screen = false;
     }
 
-    const origin_x = ObjectToScreen(0.0, sx);
-    const origin_y = ObjectToScreen(0.0, sy);
-    MapProgram.DrawMap(-origin_x, -origin_y, 1.0, local_ts);
+    // Render map with correct offset and scale
+    const origin_sx = Physics.MapToScreenX(0.0);
+    const origin_sy = Physics.MapToScreenY(0.0);
+    MapProgram.DrawMap(-origin_sx, -origin_sy, Physics.InvScreenScale, local_ts);
 
+    // Fills in on_screen that is used by RenderArrows later
     RenderPlayers(local_ts);
+
     RenderProjectiles(local_ts);
 
-    const sun_radius: f32 = 1.4;
-    if (IsObjectOnScreen(origin_x, origin_y, sun_radius)) {
-        SunProgram.DrawSun(origin_x, origin_y, sun_radius, t);
+    const sun_radius: f32 = 1.4 * Physics.InvScreenScale;
+    if (Physics.IsScreenXYVisible(origin_sx, origin_sy, sun_radius)) {
+        SunProgram.DrawSun(origin_sx, origin_sy, sun_radius, local_ts);
     }
 
     RenderArrows(local_ts);
 
-    if (pointer_active) {
+    // Draw string to finger position
+    if (finger_on_screen) {
         StringProgram.DrawString(
             kStringColor,
-            fx,
-            fy,
-            0.0, 0.0,
+            fsx,
+            fsy,
+            0.0, 0.0, // center of screen
             local_ts);
     }
 
     RenderContext.I.Flush();
 
+    // Clear is_self flag
     if (HasFrameSelf) {
         FrameSelf.is_self = false;
     }

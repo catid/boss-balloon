@@ -21,7 +21,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
     Clients.set(id, client);
 
     // Update all the player lists
-    let new_player = Netcode.MakeSetPlayer(client.player_id, client.Collider.size, client.score, client.wins, client.losses, client.skin, client.team, client.name);
+    let new_player = Netcode.MakeSetPlayer(client.player_id, client.score, client.wins, client.losses, client.skin, client.team, client.name);
     if (new_player != null) {
         let clients = Clients.values();
         for (let i: i32 = 0; i < clients.length; ++i) {
@@ -29,7 +29,7 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
             old.MessageCombiner.Push(new_player);
 
             if (old.id != client.id) {
-                let old_player = Netcode.MakeSetPlayer(old.player_id, client.Collider.size, old.score, old.wins, old.losses, old.skin, old.team, old.name);
+                let old_player = Netcode.MakeSetPlayer(old.player_id, old.score, old.wins, old.losses, old.skin, old.team, old.name);
                 client.MessageCombiner.Push(old_player);
             }
         }

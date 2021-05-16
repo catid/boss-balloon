@@ -12,9 +12,8 @@ for server in ${ServerList[*]}; do
     ssh $server mkdir /var/www/bossballoon.io
 
     echo "Copying new www"
-    rsync -avP --files-from=scripts/www_file_list.txt client/deploy/ $server:/var/www/bossballoon.io/
+    rsync -avP --files-from=scripts/www_file_list.txt client/www/ $server:/var/www/bossballoon.io/
 
     echo "Copying new server"
     rsync -avP --files-from=scripts/server_file_list.txt . $server:~/server/
 done
-

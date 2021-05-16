@@ -1,14 +1,14 @@
 {
   "targets": {
     "client_debug": {
-        "binaryFile": "client/deploy/client.wasm",
-        "textFile": "client/deploy/client.wat",
+        "binaryFile": "client/www/bossballoon.wasm",
+        "textFile": "client/www/bossballoon.wat",
         "sourceMap": true,
         "debug": true
       },
       "client_release": {
-        "binaryFile": "client/deploy/client.wasm",
-        "textFile": "client/deploy/client.wat",
+        "binaryFile": "client/www/bossballoon.wasm",
+        "textFile": "client/www/bossballoon.wat",
         "optimizeLevel": 3,
         "shrinkLevel": 2,
         "converge": false,
@@ -28,6 +28,6 @@
         "converge": false,
         "noAssert": false
       }
-      },
+    },
   "options": {}
 }
