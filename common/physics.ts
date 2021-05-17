@@ -7,7 +7,7 @@ export namespace Physics {
 //------------------------------------------------------------------------------
 // Constants
 
-export const kMaxTeams: i32 = 5;
+export const kNumTeams: i32 = 5;
 
 export const kProjectileMaxAge: i32 = 10_000 * 4; // quarters of a second
 
@@ -70,6 +70,20 @@ export function ConvertWallclock(t_msec: f64): u64 {
 
 //------------------------------------------------------------------------------
 // Tools
+
+function clamp_i32(x: i32, minval: i32, maxval: i32): i32 {
+    if (x <= minval) {
+        return minval;
+    }
+    if (x >= maxval) {
+        return maxval;
+    }
+    return x;
+}
+
+function abs_i32(x: i32): i32 {
+    return x < 0 ? -x : x;
+}
 
 // Accepts x in [-kMapWidth, kMapWidth*2) and produces values in [0, kMapWidth)
 function MapModX(x: f32): f32 {
@@ -574,7 +588,7 @@ function IsColliding(p: Physics.PlayerCollider, projectile: Physics.Projectile):
     return x*x + y*y < r*r;
 }
 
-let OnProjectileHit: (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider)=>void;
+let OnProjectileHit: (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => void;
 
 function OnHit(local_ts: u64, p: Physics.PlayerCollider, pp: Projectile): void {
     p.last_collision_local_ts = local_ts;
@@ -964,50 +978,36 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
 }
 
 
-let PhysicsMasterTimestamp: u64 = 0;
+export let MasterTimestamp: u64 = 0;
 
 export function SimulateTo(local_ts: u64, server_ts: u64): void {
-    let dt: i32 = i32(local_ts - PhysicsMasterTimestamp);
+    let dt: i32 = i32(local_ts - MasterTimestamp);
 
-    // Roll back server time to current PhysicsMasterTimestamp
+    // Roll back server time to current MasterTimestamp
     server_ts -= dt;
 
     const step: i32 = 40;
 
     while (dt >= step) {
-        SimulationStep(f32(step) * 0.25, PhysicsMasterTimestamp, server_ts);
+        SimulationStep(f32(step) * 0.25, MasterTimestamp, server_ts);
         dt -= step;
-        PhysicsMasterTimestamp += step;
+        MasterTimestamp += step;
         server_ts += step;
     }
 
     if (dt > 0) {
-        SimulationStep(f32(dt) * 0.25, PhysicsMasterTimestamp, server_ts);
-        PhysicsMasterTimestamp += dt;
+        SimulationStep(f32(dt) * 0.25, MasterTimestamp, server_ts);
+        MasterTimestamp += dt;
     }
 }
 
 
 //------------------------------------------------------------------------------
-// Client
-
-function clamp_i32(x: i32, minval: i32, maxval: i32): i32 {
-    if (x <= minval) {
-        return minval;
-    }
-    if (x >= maxval) {
-        return maxval;
-    }
-    return x;
-}
-
-function abs_i32(x: i32): i32 {
-    return x < 0 ? -x : x;
-}
+// Client Side API
 
 // We assume that the player object has been updated by the caller to the
 // provided x, y, vx, vy, ax, ay members.
-export function UpdateServerPosition(
+export function IncorporateServerPosition(
     p: Physics.PlayerCollider,
     local_ts: u64, send_delay: i32, server_ts: u64,
     shot_x: f32, shot_y: f32,
@@ -1044,9 +1044,46 @@ export function UpdateServerPosition(
 
 
 //------------------------------------------------------------------------------
+// Server Side API
+
+// We assume that the player object has been updated by the caller to the
+// provided x, y, vx, vy, ax, ay members.
+export function IncorporateClientPosition(p: Physics.PlayerCollider, local_ts: u64, send_delay: i32): void
+{
+    // Send delay is always at least 1/2 millisecond,
+    // and the ping time to the other side of the globe is under 200 milliseconds,
+    // so bound the upper end too.
+    send_delay = clamp_i32(send_delay, 2, 500 * 4);
+
+    const local_sent_ts: u64 = local_ts - send_delay;
+
+    // Next time we update the physics simulation, we'll fix this.
+    // We assume that if the client is ahead of the server's simulation it's just by a little
+    // bit and doesn't cause bullets to miss.
+    p.t = local_sent_ts;
+
+    // If a new shot has been fired:
+    const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
+    const server_shot_ts: u64 = server_ts - last_shot_offset;
+    const local_shot_ts: u64 = local_sent_ts - last_shot_offset;
+    const shot_dt: i32 = abs_i32(i32(p.last_shot_local_ts - local_shot_ts));
+
+    if (shot_dt >= kProjectileInterval / 2) {
+        p.last_shot_local_ts = local_shot_ts;
+
+        const is_bomb: bool = IsBombServerTime(server_shot_ts);
+
+        PlayerFireProjectile(
+            p, local_shot_ts, server_shot_ts, is_bomb,
+            shot_x, shot_y, shot_vx, shot_vy, true);
+    }
+}
+
+
+//------------------------------------------------------------------------------
 // Initialize
 
-export function Initialize(t_msec: f64, on_projectile_hit: (killee: PlayerCollider, killer: PlayerCollider)=>void): void {
+export function Initialize(t_msec: f64, on_projectile_hit: (killee: PlayerCollider, killer: PlayerCollider) => void): void {
     OnProjectileHit = on_projectile_hit;
     InitTimeConversion(t_msec);
     InitializeCollisions();

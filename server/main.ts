@@ -1,24 +1,15 @@
 import { Netcode } from "../common/netcode"
 import { Physics } from "../common/physics"
-import { jsConsoleLog } from "../common/javascript"
-
-
-
-//------------------------------------------------------------------------------
-// Objects
-
-let Clients = new Map<i32, Player>();
-let temp_clients: Array<Player>;
-
-const npt_counts: Array<i32> = new Array<i32>(kMaxTeams);
+import { jsConsoleLog, jsGetMilliseconds } from "../common/javascript"
+import { jsSendUnreliable, jsSendReliable } from "./javascript"
 
 
 //------------------------------------------------------------------------------
 // Player
 
-export class Player {
+class ConnectedClient {
     // Identifier for javascript
-    js_id: i32;
+    javascript_id: i32;
 
     // Identifier for network
     network_id: u8 = 0;
@@ -34,16 +25,31 @@ export class Player {
     TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
     MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 
-    constructor(js_id: i32) {
-        this.js_id = js_id;
+    constructor(javascript_id: i32) {
+        this.javascript_id = javascript_id;
     }
 };
 
+const ClientList: Array<ConnectedClient> = new Array<ConnectedClient>(0);
+
+function RemoveClient(client: ConnectedClient): void {
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        const client_i = ClientList[i];
+        if (client_i != client) {
+            const new_count = client_count - 1;
+            ClientList[i] = ClientList[new_count];
+            ClientList.length = new_count;
+            return;
+        }
+    }
+}
+
 
 //------------------------------------------------------------------------------
-// PlayerIdAssigner
+// NetworkIdAssigner
 
-class PlayerIdAssigner {
+class NetworkIdAssigner {
     Available: Array<u8> = new Array<u8>(256);
 
     constructor() {
@@ -63,20 +69,22 @@ class PlayerIdAssigner {
     }
 }
 
-let IdAssigner: PlayerIdAssigner = new PlayerIdAssigner();
+let IdAssigner: NetworkIdAssigner = new NetworkIdAssigner();
 
 
 //------------------------------------------------------------------------------
 // Tools
 
+const npt_counts: Array<i32> = new Array<i32>(Physics.kNumTeams);
+
 function ChooseNewPlayerTeam(): u8 {
     npt_counts.fill(0);
 
-    let clients = Clients.values();
-    for (let i: i32 = 0; i < clients.length; ++i) {
-        const team: i32 = i32(clients[i].team);
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        const team: i32 = i32(ClientList[i].team);
 
-        if (team >= 0 && team < Netcode.kMaxTeams) {
+        if (team >= 0 && team < Physics.kNumTeams) {
             npt_counts[team]++;
         }
     }
@@ -84,7 +92,7 @@ function ChooseNewPlayerTeam(): u8 {
     let min_count: i32 = npt_counts[0];
     let best_team: u8 = 0;
 
-    for (let i: i32 = 1; i < Netcode.kMaxTeams; ++i) {
+    for (let i: i32 = 1; i < Physics.kNumTeams; ++i) {
         const count: i32 = npt_counts[i];
 
         if (count < min_count) {
@@ -97,7 +105,10 @@ function ChooseNewPlayerTeam(): u8 {
 }
 
 
-export function OnConnectionOpen(id: i32): ConnectedClient | null {
+//------------------------------------------------------------------------------
+// Network Events
+
+export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
     if (IdAssigner.IsFull()) {
         jsConsoleLog("Server full - Connection denied");
         return null;
@@ -105,30 +116,37 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
 
     const now_msec: f64 = jsGetMilliseconds();
 
-    let client = new ConnectedClient(id);
-    jsConsoleLog("Connection open id=" + client.id.toString());
+    let client = new ConnectedClient(javascript_id);
 
-    client.player_id = IdAssigner.Acquire();
-    client.name = "Player " + client.player_id.toString();
-    client.score = 100;
+    client.network_id = IdAssigner.Acquire();
+    client.name = "Player " + client.network_id.toString();
     client.team = ChooseNewPlayerTeam();
+
+    // Insert into client list
+    ClientList.push(client);
+
+    jsConsoleLog("Connection open javascript_id=" + client.javascript_id.toString()
+        + " network_id=" + client.network_id.toString());
 
     SendTimeSync(client, now_msec);
 
-    jsSendReliable(client.id, Netcode.MakeSetId(client.player_id));
+    jsSendReliable(client.javascript_id, Netcode.MakeSetId(client.network_id));
 
-    Clients.set(id, client);
+    // Update all the remote player lists
+    let new_player = Netcode.MakeSetPlayer(
+        client.network_id, client.score, client.wins, client.losses,
+        client.skin, client.team, client.name);
 
-    // Update all the player lists
-    let new_player = Netcode.MakeSetPlayer(client.player_id, client.score, client.wins, client.losses, client.skin, client.team, client.name);
     if (new_player != null) {
-        let clients = Clients.values();
-        for (let i: i32 = 0; i < clients.length; ++i) {
-            let old = clients[i];
+        const client_count: i32 = ClientList.length;
+        for (let i: i32 = 0; i < client_count; ++i) {
+            let old = ClientList[i];
             old.MessageCombiner.Push(new_player);
 
-            if (old.id != client.id) {
-                let old_player = Netcode.MakeSetPlayer(old.player_id, old.score, old.wins, old.losses, old.skin, old.team, old.name);
+            if (old.network_id != client.network_id) {
+                let old_player = Netcode.MakeSetPlayer(
+                    old.network_id, old.score, old.wins, old.losses,
+                    old.skin, old.team, old.name);
                 client.MessageCombiner.Push(old_player);
             }
         }
@@ -140,12 +158,12 @@ export function OnConnectionOpen(id: i32): ConnectedClient | null {
 export function OnSendTimer(client: ConnectedClient): void {
     // Send all player position data.
     // It's possible to hit someone almost entirely across the map from anywhere.
-    const client_count: i32 = temp_clients.length;
+    const client_count: i32 = ClientList.length;
     if (client_count > 0) {
         const max_clients_per_datagram: i32 = 55;
         const bytes_per_client: i32 = 20;
 
-        let local_ts: u32 = u32(physics_t) & 0x7fffff;
+        let local_ts: u32 = u32(Physics.MasterTimestamp) & 0x7fffff;
         let datagram_count: i32 = (client_count + max_clients_per_datagram - 1) / max_clients_per_datagram;
 
         let j: i32 = 0;
@@ -162,30 +180,31 @@ export function OnSendTimer(client: ConnectedClient): void {
 
             store<u8>(ptr, Netcode.UnreliableType.ServerPosition, 0);
             Netcode.Store24(ptr, 1, local_ts);
-            store<u8>(ptr, u8(client.size), 4);
+            store<u8>(ptr, u8(client.Collider.size), 4);
             store<u8>(ptr, u8(actual_count), 5);
 
             let pptr: usize = ptr + 6;
             for (let k: i32 = 0; k < actual_count; ++k) {
-                const client_j = temp_clients[j];
+                const client_j = ClientList[j];
+                const physics_j = client.Collider;
 
-                store<u8>(pptr, client_j.player_id, 0);
-                store<u8>(pptr, client_j.size, 1);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.x), 2);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.y), 4);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vx), 6);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.vy), 8);
-                store<u16>(pptr, Netcode.ConvertAccelto16(client_j.ax, client_j.ay), 10);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_x), 12);
-                store<u16>(pptr, Netcode.ConvertXto16(client_j.last_shot_y), 14);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vx), 16);
-                store<i16>(pptr, Netcode.ConvertVXto16(client_j.last_shot_vy), 18);
+                store<u8>(pptr, client_j.network_id, 0);
+                store<u8>(pptr, physics_j.size, 1);
+                store<u16>(pptr, Netcode.ConvertXto16(physics_j.x), 2);
+                store<u16>(pptr, Netcode.ConvertXto16(physics_j.y), 4);
+                store<i16>(pptr, Netcode.ConvertVXto16(physics_j.vx), 6);
+                store<i16>(pptr, Netcode.ConvertVXto16(physics_j.vy), 8);
+                store<u16>(pptr, Netcode.ConvertAccelto16(physics_j.ax, physics_j.ay), 10);
+                store<u16>(pptr, Netcode.ConvertXto16(physics_j.last_shot_x), 12);
+                store<u16>(pptr, Netcode.ConvertXto16(physics_j.last_shot_y), 14);
+                store<i16>(pptr, Netcode.ConvertVXto16(physics_j.last_shot_vx), 16);
+                store<i16>(pptr, Netcode.ConvertVXto16(physics_j.last_shot_vy), 18);
 
                 pptr += bytes_per_client;
                 ++j;
             }
 
-            jsSendUnreliable(client.id, buffer);
+            jsSendUnreliable(client.javascript_id, buffer);
         }
     }
 
@@ -196,20 +215,20 @@ export function OnSendTimer(client: ConnectedClient): void {
         return;
     }
 
-    jsSendReliable(client.id, buffer);
+    jsSendReliable(client.javascript_id, buffer);
 }
 
 export function OnConnectionClose(client: ConnectedClient): void {
-    jsConsoleLog("Connection close id=" + client.id.toString());
+    jsConsoleLog("Connection close javascript_id=" + client.javascript_id.toString() + " network_id=" + client.network_id.toString());
 
-    IdAssigner.Release(client.player_id);
+    IdAssigner.Release(client.network_id);
 
-    Clients.delete(client.id);
+    RemoveClient(client);
 
-    let remove_msg = Netcode.MakeRemovePlayer(client.player_id);
-    let clients = Clients.values();
-    for (let i: i32 = 0; i < clients.length; ++i) {
-        clients[i].MessageCombiner.Push(remove_msg);
+    let remove_msg = Netcode.MakeRemovePlayer(client.network_id);
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        ClientList[i].MessageCombiner.Push(remove_msg);
     }
 }
 
@@ -224,7 +243,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let t: u64 = TimeConverter.MsecToTime(recv_msec);
+    let local_recv_ts: u64 = Physics.ConvertWallclock(recv_msec);
 
     let offset: i32 = 0;
     while (offset < buffer.length) {
@@ -238,7 +257,7 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let min_trip_recv_ts24_trunc: u32 = Netcode.Load24(ptr, 7);
             let slope: f32 = load<f32>(ptr, 10);
 
-            client.TimeSync.OnPeerSync(t, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
+            client.TimeSync.OnPeerSync(local_recv_ts, remote_send_ts, min_trip_send_ts24_trunc, min_trip_recv_ts24_trunc, slope);
 
             //jsSendUnreliable(client.id, Netcode.MakeTimeSyncPong(remote_send_ts, client.TimeSync.LocalToPeerTime_ToTS23(t)));
 
@@ -247,39 +266,29 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             let ping_ts: u32 = Netcode.Load24(ptr, 1);
             let pong_ts: u32 = Netcode.Load24(ptr, 4);
 
-            let ping: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, ping_ts);
-            let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(t, pong_ts);
+            let ping: u64 = client.TimeSync.ExpandLocalTime_FromTS23(local_recv_ts, ping_ts);
+            let pong: u64 = client.TimeSync.ExpandLocalTime_FromTS23(local_recv_ts, pong_ts);
 
-            if (pong < ping || t + 1 < pong) {
+            if (pong < ping || local_recv_ts + 1 < pong) {
                 jsConsoleLog("*** TEST FAILED!");
                 jsConsoleLog("Ping T = " + ping.toString());
                 jsConsoleLog("Pong T = " + pong.toString());
-                jsConsoleLog("Recv T = " + t.toString());
+                jsConsoleLog("Recv T = " + local_recv_ts.toString());
                 client.TimeSync.DumpState();
             }
 
             offset += 7;
         } else if (type == Netcode.UnreliableType.ClientPosition && remaining >= 14) {
-            let peer_ts: u32 = Netcode.Load24(ptr, 1);
+            const client_ts: u32 = Netcode.Load24(ptr, 1);
+            const client_send_ts: u64 = client.TimeSync.PeerToLocalTime_FromTS23(client_ts);
 
-            // FIXME: Reject new positions too far from our estimate
+            const c: Physics.PlayerCollider = client.Collider;
 
-            const x: u16 = load<u16>(ptr, 4);
-            const y: u16 = load<u16>(ptr, 6);
-            const vx: i16 = load<i16>(ptr, 8);
-            const vy: i16 = load<i16>(ptr, 10);
+            c.x = Netcode.Convert16toX(load<u16>(ptr, 4));
+            c.y = Netcode.Convert16toX(load<u16>(ptr, 6));
+            c.vx = Netcode.Convert16toVX(load<i16>(ptr, 8));
+            c.vy = Netcode.Convert16toVX(load<i16>(ptr, 10));
             const aa: u16 = load<u16>(ptr, 12);
-
-            let local_ts: u64 = client.TimeSync.PeerToLocalTime_FromTS23(peer_ts);
-
-            // Simulate player forward to current time
-            let dt: i32 = i32(t - local_ts);
-            if (dt < 0) {
-                dt = 0;
-            } else if (dt > 4000) {
-                dt = 4000; // 1 second latency limit
-            }
-            let fix_t: i32 = i32(t - dt);
 
             let ax: f32 = 0.0, ay: f32 = 0.0;
             if (aa != 0) {
@@ -288,33 +297,9 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
                 ay = Mathf.sin(angle);
             }
 
-            // If the player timestamp is after our last physics iteration:
-            let physics_dt: i32 = i32(physics_t - fix_t);
-            if (physics_dt > 0) {
-                client.simulation_behind = false;
-                client.x = Netcode.Convert16toX(x);
-                client.y = Netcode.Convert16toX(y);
-                client.vx = Netcode.Convert16toVX(vx);
-                client.vy = Netcode.Convert16toVX(vy);
-                client.ax = ax;
-                client.ay = ay;
+            const send_delay: i32 = i32(local_recv_ts - client_send_ts);
 
-                // Roll up player position to current time
-                SimulateOnePlayer(client, physics_dt);
-            } else {
-                // Player is ahead of our simulation.
-                // We should continue running our simulation until their timestep elapses,
-                // and then switch to their state.
-
-                client.simulation_behind = true;
-                client.peer_t = fix_t;
-                client.peer_x = Netcode.Convert16toX(x);
-                client.peer_y = Netcode.Convert16toX(y);
-                client.peer_vx = Netcode.Convert16toVX(vx);
-                client.peer_vy = Netcode.Convert16toVX(vy);
-                client.peer_ax = ax;
-                client.peer_ay = ay;
-            }
+            Physics.IncorporateClientPosition(client.Collider, local_recv_ts, send_delay);
 
             offset += 14;
         } else {
@@ -348,11 +333,11 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 
             let m: string = String.UTF8.decodeUnsafe(ptr + 3, m_len, false);
 
-            let chat = Netcode.MakeChat(client.player_id, m);
+            let chat = Netcode.MakeChat(client.network_id, m);
 
-            let clients = Clients.values();
-            for (let i: i32 = 0; i < clients.length; ++i) {
-                clients[i].MessageCombiner.Push(chat);
+            const client_count: i32 = ClientList.length;
+            for (let i: i32 = 0; i < client_count; ++i) {
+                ClientList[i].MessageCombiner.Push(chat);
             }
 
             offset += 4 + m_len;
@@ -368,16 +353,17 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
 // Message Serializers
 
 export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
-    jsSendUnreliable(client.id, client.TimeSync.MakeTimeSync(Physics.ConvertWallclock(send_msec)));
+    jsSendUnreliable(client.javascript_id, client.TimeSync.MakeTimeSync(Physics.ConvertWallclock(send_msec)));
 }
-
 
 
 //------------------------------------------------------------------------------
 // Initialization
 
 export function Initialize(t_msec: f64): void {
-    Physics.Initialize(t_msec);
+    Physics.Initialize(t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
+        // FIXME
+    });
 }
 
 
@@ -387,8 +373,6 @@ export function Initialize(t_msec: f64): void {
 export function OnTick(now_msec: f64): void {
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = Physics.ConvertWallclock(now_msec);
-
-    temp_clients = Clients.values();
 
     Physics.SimulateTo(t, t);
 

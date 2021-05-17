@@ -35,7 +35,10 @@ export const kMaxPacketBytes: i32 = 1100;
     [UnreliableType.TimeSyncPong(1 byte)] [Timestamp from sender(3 bytes)] [Remote-23bit-SendTimestamp(3 bytes)]
     Reply to TimeSync.  Used to test the time sync code.
 
-    [UnreliableType.ClientPosition(1 byte)] [Client-23bit-SendTimestamp(3 bytes)] [x(2 bytes)] [y(2 bytes)]
+    [UnreliableType.ClientPosition(1 byte)] [Client-23bit-SendTimestamp(3 bytes)]
+    [x(2 bytes)] [y(2 bytes)]
+    [vx(2 bytes)] [vy(2 bytes)]
+    [accel angle(2 bytes)]
     Sent by client to request a position change.
     We use client time in the message to improve the time sync dataset.
     Finger position relative to center: ((x or y) - 32768) / 32768 = -1..1

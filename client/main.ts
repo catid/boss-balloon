@@ -455,7 +455,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
 
-                    Physics.UpdateServerPosition(
+                    Physics.IncorporateServerPosition(
                         p.Collider,
                         local_ts, send_delay, server_ts,
                         last_shot_x, last_shot_y,
