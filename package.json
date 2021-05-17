@@ -10,6 +10,7 @@
     "asbuild:server_release": "asc server/main.ts --target server_release --runtime minimal --exportTable --exportRuntime --importMemory",
     "release": "npm run asbuild:client_release && npm run asbuild:server_release",
     "debug": "npm run asbuild:client_debug && npm run asbuild:server_debug",
+    "testserver": "node server/index.js",
     "server": "pm2 start server/index.js --watch",
     "genkey": "openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 100 -nodes",
     "asbuild:watch": "nodemon --ext ts -w client -x npm run asbuild:client_debug",

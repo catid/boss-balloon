@@ -34,7 +34,7 @@ var credentials = { key: privateKey, cert: certificate };
 
 var app = express();
 
-app.use("/", express.static(path.join(__dirname, '../client/deploy')));
+app.use("/", express.static(path.join(__dirname, '../client/www')));
 
 var httpsServer = https.createServer(credentials, app);
 httpsServer.listen(8443);
@@ -398,7 +398,7 @@ httpsServer.on('upgrade', function upgrade(request, socket, head) {
 // AssemblyScript
 
 const wasmImports = {
-    common: {
+    javascript: {
         jsConsoleLog: (m) => {
             // Make a copy because the memory may have moved by the next tick
             var copy = wasmExports.__getString(m);
@@ -407,9 +407,7 @@ const wasmImports = {
         },
         jsGetMilliseconds: () => {
             return performance.now();
-        }
-    },
-    imports: {
+        },
         jsSendReliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {

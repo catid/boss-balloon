@@ -423,28 +423,27 @@ function renderFrame() {
 // WebAssembly Frame Loop
 
 let wasmImports = {};
-wasmImports["common"] = {};
-wasmImports["common"]["jsConsoleLog"] = (m) => {
+wasmImports["javascript"] = {};
+wasmImports["javascript"]["jsConsoleLog"] = (m) => {
     // Make a copy because the memory may have moved by the next tick
     var copy = wasmExports["__getString"](m);
     //console.log(copy); // sync version
     setTimeout(() => { console.log(copy); }, 50); // async version
 };
-wasmImports["common"]["jsGetMilliseconds"] = () => {
+wasmImports["javascript"]["jsGetMilliseconds"] = () => {
     return performance.now();
 };
-wasmImports["client"] = {};
-wasmImports["client"]["jsSendReliable"] = (buffer) => {
+wasmImports["javascript"]["jsSendReliable"] = (buffer) => {
     if (webrtc_reliable != null) {
         webrtc_reliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
-wasmImports["client"]["jsSendUnreliable"] = (buffer) => {
+wasmImports["javascript"]["jsSendUnreliable"] = (buffer) => {
     if (webrtc_unreliable != null) {
         webrtc_unreliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
-wasmImports["client"]["jsPlayMusic"] = (name) => {
+wasmImports["javascript"]["jsPlayMusic"] = (name) => {
     var copy = wasmExports["__getString"](name);
     setTimeout(() => {
         if (ActiveMusic != copy) {
@@ -481,7 +480,7 @@ wasmImports["client"]["jsPlayMusic"] = (name) => {
         }
     }, 0);
 };
-wasmImports["client"]["jsPlaySFX"] = (name) => {
+wasmImports["javascript"]["jsPlaySFX"] = (name) => {
     var copy = wasmExports["__getString"](name);
     setTimeout(() => {
         if (can_use_audio) {
@@ -490,10 +489,10 @@ wasmImports["client"]["jsPlaySFX"] = (name) => {
         }
     }, 0);
 };
-wasmImports["client"]["jsServerLoginGood"] = () => {
+wasmImports["javascript"]["jsServerLoginGood"] = () => {
     console.log("LoginGood");
 };
-wasmImports["client"]["jsServerLoginBad"] = (reason) => {
+wasmImports["javascript"]["jsServerLoginBad"] = (reason) => {
     var copy = wasmExports["__getString"](reason);
     console.error("LoginBad:", copy);
 };
