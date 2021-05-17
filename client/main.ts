@@ -700,7 +700,7 @@ export function RenderFrame(
     }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
-    let local_ts: u64 = Physics.ConvertWallclock(now_msec);
+    const local_ts: u64 = Physics.ConvertWallclock(now_msec);
     const server_ts: u64 = TimeSync.TransformLocalToRemote(local_ts);
 
     // Update positions to current time
@@ -719,11 +719,11 @@ export function RenderFrame(
 
     // Render screen coordinates for finger touch
     // Note: Render screen origin is (0,0) and corners are (-1,-1) -> (1,1)
-    let fsx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
-    let fsy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
+    const fsx: f32 = f32(finger_x) / f32(canvas_w) * 2.0 - 1.0;
+    const fsy: f32 = f32(finger_y) / f32(canvas_h) * 2.0 - 1.0;
 
     // Is the finger on the screen?
-    let finger_on_screen: bool = Physics.IsScreenXYVisible(fsx, fsy, 0.0);
+    const finger_on_screen: bool = Physics.IsScreenXYVisible(fsx, fsy, 0.0);
 
     // Now change acceleration at current time
     if (HasFrameSelf) {

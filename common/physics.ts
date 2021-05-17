@@ -134,7 +134,7 @@ export function SetScreenCenter(x: f32, y: f32): void {
 export let ScreenScale: f32 = 1.0, InvScreenScale: f32 = 1.0;
 
 // Factor to convert from map to screen coordinates
-export let MapToScreen: f32 = 1.0, ScreenToMap: f32 = 1.0;
+export let MapToScreen: f32 = kInvMapScreenBaseRadius, ScreenToMap: f32 = kMapScreenBaseRadius;
 
 export function SetScreenScale(scale: f32): void {
     ScreenScale = scale;
@@ -367,14 +367,11 @@ function PlayerFireProjectile(
         const nx: f32 = Mathf.cos(angle);
         const ny: f32 = Mathf.sin(angle);
 
-        // Get main shot velocity
-        const player_to_bullet_speed = kBulletSpeed * inv_player_speed;
-
         const pp = new Projectile(p);
         pp.x = x;
         pp.y = y;
-        pp.vx = nx * player_to_bullet_speed + vx;
-        pp.vy = ny * player_to_bullet_speed + vy;
+        pp.vx = nx * kBulletSpeed + vx;
+        pp.vy = ny * kBulletSpeed + vy;
         pp.local_ts = local_ts;
         pp.server_ts = server_ts;
         pp.team = p.team;
