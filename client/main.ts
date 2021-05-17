@@ -326,7 +326,11 @@ function OnChat(p: Player, m: string): void {
 //------------------------------------------------------------------------------
 // Connection
 
+let is_connection_open: bool = false;
+
 export function OnConnectionOpen(now_msec: f64): void {
+    is_connection_open = true;
+
     jsConsoleLog("UDP link up");
 
     Physics.Initialize(now_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
@@ -356,6 +360,8 @@ export function OnReliableSendTimer(): void {
 
 export function OnConnectionClose(): void {
     jsConsoleLog("UDP link down");
+
+    is_connection_open = false;
 }
 
 
@@ -662,6 +668,8 @@ export function SendPosition(t: u64): void {
 //------------------------------------------------------------------------------
 // Initialization
 
+export const UINT8ARRAY_ID = idof<Uint8Array>();
+
 export function Initialize(): void {
     new RenderContext();
 
@@ -686,6 +694,10 @@ export function RenderFrame(
 {
     RenderContext.I.UpdateViewport(canvas_w, canvas_h);
     RenderContext.I.Clear();
+
+    if (!is_connection_open) {
+        return;
+    }
 
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let local_ts: u64 = Physics.ConvertWallclock(now_msec);

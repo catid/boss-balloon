@@ -427,8 +427,8 @@ wasmImports["javascript"] = {};
 wasmImports["javascript"]["jsConsoleLog"] = (m) => {
     // Make a copy because the memory may have moved by the next tick
     var copy = wasmExports["__getString"](m);
-    //console.log(copy); // sync version
-    setTimeout(() => { console.log(copy); }, 50); // async version
+    console.log(copy); // sync version
+    //setTimeout(() => { console.log(copy); }, 50); // async version
 };
 wasmImports["javascript"]["jsGetMilliseconds"] = () => {
     return performance.now();

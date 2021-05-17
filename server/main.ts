@@ -361,6 +361,8 @@ export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
 //------------------------------------------------------------------------------
 // Initialization
 
+export const UINT8ARRAY_ID = idof<Uint8Array>();
+
 export function Initialize(t_msec: f64): void {
     Physics.Initialize(t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
         // FIXME
@@ -375,7 +377,8 @@ export function OnTick(now_msec: f64): void {
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = Physics.ConvertWallclock(now_msec);
 
-    Physics.SimulateTo(t, t);
+    // FIXME
+    //Physics.SimulateTo(t, t);
 
     // Collect GC after simulation tasks are done
     __collect();
