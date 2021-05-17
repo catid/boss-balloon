@@ -19,14 +19,14 @@ class ConnectedClient {
     wins: u32 = 0;
     losses: u32 = 0;
     skin: u8 = 0;
-    team: u8 = 0;
 
     Collider: Physics.PlayerCollider;
     TimeSync: Netcode.TimeSync = new Netcode.TimeSync();
     MessageCombiner: Netcode.MessageCombiner = new Netcode.MessageCombiner();
 
-    constructor(javascript_id: i32) {
+    constructor(javascript_id: i32, team: u8) {
         this.javascript_id = javascript_id;
+        this.Collider = Physics.CreatePlayerCollider(team);
     }
 };
 
@@ -82,7 +82,7 @@ function ChooseNewPlayerTeam(): u8 {
 
     const client_count: i32 = ClientList.length;
     for (let i: i32 = 0; i < client_count; ++i) {
-        const team: i32 = i32(ClientList[i].team);
+        const team: i32 = i32(ClientList[i].Collider.team);
 
         if (team >= 0 && team < Physics.kNumTeams) {
             npt_counts[team]++;
@@ -116,11 +116,12 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
 
     const now_msec: f64 = jsGetMilliseconds();
 
-    let client = new ConnectedClient(javascript_id);
+    const team: u8 = ChooseNewPlayerTeam();
+
+    let client = new ConnectedClient(javascript_id, team);
 
     client.network_id = IdAssigner.Acquire();
     client.name = "Player " + client.network_id.toString();
-    client.team = ChooseNewPlayerTeam();
 
     // Insert into client list
     ClientList.push(client);
@@ -135,7 +136,7 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
     // Update all the remote player lists
     let new_player = Netcode.MakeSetPlayer(
         client.network_id, client.score, client.wins, client.losses,
-        client.skin, client.team, client.name);
+        client.skin, client.Collider.team, client.name);
 
     if (new_player != null) {
         const client_count: i32 = ClientList.length;
@@ -146,7 +147,7 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
             if (old.network_id != client.network_id) {
                 let old_player = Netcode.MakeSetPlayer(
                     old.network_id, old.score, old.wins, old.losses,
-                    old.skin, old.team, old.name);
+                    old.skin, old.Collider.team, old.name);
                 client.MessageCombiner.Push(old_player);
             }
         }

@@ -1061,22 +1061,6 @@ export function IncorporateClientPosition(p: Physics.PlayerCollider, local_ts: u
     // We assume that if the client is ahead of the server's simulation it's just by a little
     // bit and doesn't cause bullets to miss.
     p.t = local_sent_ts;
-
-    // If a new shot has been fired:
-    const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
-    const server_shot_ts: u64 = server_ts - last_shot_offset;
-    const local_shot_ts: u64 = local_sent_ts - last_shot_offset;
-    const shot_dt: i32 = abs_i32(i32(p.last_shot_local_ts - local_shot_ts));
-
-    if (shot_dt >= kProjectileInterval / 2) {
-        p.last_shot_local_ts = local_shot_ts;
-
-        const is_bomb: bool = IsBombServerTime(server_shot_ts);
-
-        PlayerFireProjectile(
-            p, local_shot_ts, server_shot_ts, is_bomb,
-            shot_x, shot_y, shot_vx, shot_vy, true);
-    }
 }
 
 
