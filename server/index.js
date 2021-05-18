@@ -20,7 +20,6 @@ const loader = require("@assemblyscript/loader");
 const node_datachannel = require('node-datachannel');
 const { performance } = require('perf_hooks');
 
-let wasmModule;
 let wasmExports;
 
 
@@ -38,6 +37,18 @@ app.use("/", express.static(path.join(__dirname, '../client/www')));
 
 var httpsServer = https.createServer(credentials, app);
 httpsServer.listen(8443);
+
+
+//------------------------------------------------------------------------------
+// Buffer API
+
+let ReliableRecvBuffer, UnreliableRecvBuffer, SendBuffer; // Uint8Array
+
+function SetupPacketBuffers() {
+    ReliableRecvBuffer = new Uint8Array(memory.buffer, wasmExports.GetPacketReliableRecvBuffer(), wasmExports.kPacketBufferBytes);
+    UnreliableRecvBuffer = new Uint8Array(memory.buffer, wasmExports.GetPacketUnreliableRecvBuffer(), wasmExports.kPacketBufferBytes);
+    SendBuffer = new Uint8Array(memory.buffer, wasmExports.GetPacketSendBuffer(), wasmExports.kPacketBufferBytes);
+}
 
 
 //------------------------------------------------------------------------------
@@ -167,7 +178,7 @@ class WebRTCClient {
                 clearTimeout(this.setupTimeout);
                 this.setupTimeout = null;
 
-                this.client = wasmExports.__pin(wasmExports.OnConnectionOpen(this.local_id));
+                this.client = wasmExports.OnConnectionOpen(this.local_id);
                 if (this.client == null) {
                     console.error("OnConnectionOpen failed");
                     this.Close();
@@ -209,26 +220,15 @@ class WebRTCClient {
                     var t_msec = performance.now();
 
                     if (this.client != null) {
-                        // Make a copy of the buffer into wasm memory
-                        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, msg));
-
-                        wasmExports.OnUnreliableData(this.client, t_msec, dataRef);
-
-                        // Release resource
-                        wasmExports.__unpin(dataRef);
-
+                        UnreliableRecvBuffer.set(msg);
+                        wasmExports.OnUnreliableData(this.client, t_msec, msg.length);
                         this.LastUnreliable = t_msec;
                     }
                 });
                 this.dc_reliable.onMessage((msg) => {
                     if (this.client != null) {
-                        // Make a copy of the buffer into wasm memory
-                        const dataRef = wasmExports.__pin(wasmExports.__newArray(wasmExports.UINT8ARRAY_ID, msg));
-
-                        wasmExports.OnReliableData(this.client, dataRef);
-
-                        // Release resource
-                        wasmExports.__unpin(dataRef);
+                        ReliableRecvBuffer.set(msg);
+                        wasmExports.OnReliableData(this.client, msg.length);
                     }
                 });
             }
@@ -254,7 +254,6 @@ class WebRTCClient {
         }
         if (this.client != null) {
             wasmExports.OnConnectionClose(this.client);
-            wasmExports.__unpin(this.client);
             this.client = null;
         }
         if (this.dc_unreliable != null) {
@@ -408,7 +407,7 @@ const wasmImports = {
         jsGetMilliseconds: () => {
             return performance.now();
         },
-        jsSendReliable: (id, buffer) => {
+        jsSendReliable: (id, bytes) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
                 console.error("sendBuffer: Invalid id");
@@ -420,12 +419,12 @@ const wasmImports = {
             }
 
             try {
-                client.dc_reliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+                client.dc_reliable.sendMessageBinary(new Uint8Array(SendBuffer, 0, bytes));
             } catch (error) {
                 // Client disconnected
             }
         },
-        jsSendUnreliable: (id, buffer) => {
+        jsSendUnreliable: (id, bytes) => {
             let client = webrtc_local_map.get(id);
             if (client == null) {
                 console.error("sendBuffer: Invalid id");
@@ -437,7 +436,7 @@ const wasmImports = {
             }
 
             try {
-                client.dc_unreliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+                client.dc_unreliable.sendMessageBinary(new Uint8Array(SendBuffer, 0, bytes));
             } catch (error) {
                 // Client disconnected
             }
@@ -454,8 +453,10 @@ var importObject = {
     }
 };
 
-wasmModule = loader.instantiateSync(fs.readFileSync(__dirname + "/server.wasm"), importObject);
+let wasmModule = loader.instantiateSync(fs.readFileSync(__dirname + "/server.wasm"), importObject);
 wasmExports = wasmModule.exports;
+
+SetupPacketBuffers();
 
 
 //------------------------------------------------------------------------------

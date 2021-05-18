@@ -889,4 +889,23 @@ export class AccelXY {
 export const inv_aa_factor: f32 = (Mathf.PI * 2.0) / 65534.0;
 
 
+//------------------------------------------------------------------------------
+// Packet Buffer API
+
+export const kPacketBufferBytes: i32 = 1400;
+export let packet_reliable_recv_buffer: Uint8Array = new Uint8Array(kPacketBufferBytes);
+export let packet_unreliable_recv_buffer: Uint8Array = new Uint8Array(kPacketBufferBytes);
+export let packet_send_buffer: Uint8Array = new Uint8Array(kPacketBufferBytes);
+
+export function GetPacketUnreliableRecvBuffer(): usize {
+    return packet_reliable_recv_buffer.dataStart;
+}
+export function GetPacketReliableRecvBuffer(): usize {
+    return packet_unreliable_recv_buffer.dataStart;
+}
+export function GetPacketSendBuffer(): usize {
+    return packet_send_buffer.dataStart;
+}
+
+
 } // namespace Netcode
