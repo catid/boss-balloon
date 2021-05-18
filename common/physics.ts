@@ -28,6 +28,7 @@ export const kMaxPlayerGuns: i32 = 10;
 
 export const kMapFriction: f32 = 0.001;
 
+// Velocities are map units per 4 time ticks
 export const kPlayerVelocityLimit: f32 = 1.0;
 export const kBulletSpeed: f32 = 0.5;
 
@@ -344,7 +345,7 @@ export let BulletList: Array<Physics.Projectile> = new Array<Physics.Projectile>
 function IsBombServerTime(server_shot_ts: u64): bool {
     return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % 4 == 0;
 }
-kBulletSpeed
+
 function PlayerFireProjectile(
     p: Physics.PlayerCollider, local_ts: u64, server_ts: u64, is_bomb: bool,
     x: f32, y: f32, vx: f32, vy: f32, dirty: bool): void {

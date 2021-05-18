@@ -23,38 +23,45 @@ export const kMaxPacketBytes: i32 = 1100;
     All packets can be appended to eachother.
 
     [UnreliableType.TimeSync(1 byte)]
-    [Local-24bit-SendTimestamp(3 bytes)]
-    [min_trip_send_ts24_trunc(3 bytes)] [min_trip_recv_ts24_trunc(3 bytes)]
-    [ClockDriftSlope(4 bytes)]
-    Sent once a second by both sides.  Used to establish time sync.
-    Includes a send timestamp for additional data points.
-    Includes the probe received from remote peer we estimate had the shorted trip time,
-    providing that probe's 24-bit send timestamp and 24-bit receive timestamp.
-    Includes our best estimate of the clock drift slope.
+        [Local-24bit-SendTimestamp(3 bytes)]
+        [min_trip_send_ts24_trunc(3 bytes)] [min_trip_recv_ts24_trunc(3 bytes)]
+        [ClockDriftSlope(4 bytes)]
+        Sent once a second by both sides.  Used to establish time sync.
+        Includes a send timestamp for additional data points.
+        Includes the probe received from remote peer we estimate had the shorted trip time,
+        providing that probe's 24-bit send timestamp and 24-bit receive timestamp.
+        Includes our best estimate of the clock drift slope.
 
     [UnreliableType.TimeSyncPong(1 byte)] [Timestamp from sender(3 bytes)] [Remote-23bit-SendTimestamp(3 bytes)]
-    Reply to TimeSync.  Used to test the time sync code.
+        Reply to TimeSync.  Used to test the time sync code.
 
     [UnreliableType.ClientPosition(1 byte)] [Client-23bit-SendTimestamp(3 bytes)]
-    [x(2 bytes)] [y(2 bytes)]
-    [vx(2 bytes)] [vy(2 bytes)]
-    [accel angle(2 bytes)]
-    Sent by client to request a position change.
-    We use client time in the message to improve the time sync dataset.
-    Finger position relative to center: ((x or y) - 32768) / 32768 = -1..1
-*/
-
-/*
-    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)] [SelfSize(1 byte)]
-    [Player Count(1 byte)] Repeated (LSB-first): {
-        [PlayerId(1 byte)] [Size(1 byte)]
         [x(2 bytes)] [y(2 bytes)]
         [vx(2 bytes)] [vy(2 bytes)]
         [accel angle(2 bytes)]
-        [last_shot_x(2 bytes)] [last_shot_y(2 bytes)]
-        [last_shot_vx(2 bytes)] [last_shot_vy(2 bytes)]
-    } (20 bytes per client)
-    Sent by server to update client position.
+        Sent by client to request a position change.
+        We use client time in the message to improve the time sync dataset.
+        Finger position relative to center: ((x or y) - 32768) / 32768 = -1..1
+*/
+
+/*
+    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
+        [Player Count(1 byte)] Repeated (LSB-first): {
+            [PlayerId(1 byte)]
+            [x(2 bytes)] [y(2 bytes)]
+            [vx(1 byte)] [vy(1 byte)]
+            [accel angle(2 bytes)]
+        } (9 bytes per client)
+    This is sent at ~10 FPS by server to update client's own and other clients' positions.
+
+    [UnreliableType.ShotPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
+        [Player Count(1 byte)] Repeated (LSB-first): {
+            [PlayerId(1 byte)]
+            [Size-Last(1 byte)] [x-Last(2 bytes)] [y-Last(2 bytes)] [vx-Last(2 bytes)] [vy-Last(2 bytes)]
+            [Size(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(2 bytes)] [vy(2 bytes)]
+        } (19 bytes per client)
+    This is sent at ~2 FPS by server to update client's shots, about once per shot.
+    It includes the previous shot too in case a packet gets lost.
 
     Size of the ship implies number of guns firing bullets.
     Size=0 indicates dead player.
@@ -85,44 +92,43 @@ export enum UnreliableType {
     All packets can be appended to eachother.
 
     [ReliableType.SetId(1 byte)] [PlayerId(1 byte)]
-    Server is assigning the client's info.
+        Server is assigning the client's info.
 
 
     [ReliableType.ClientLogin(1 byte)]
-    [Name Length(1 byte)] [Name(NL bytes)]
-    [Password Length(1 byte)] [Password(PL bytes)]
-    Client is accessing a name.
+        [Name Length(1 byte)] [Name(NL bytes)]
+        [Password Length(1 byte)] [Password(PL bytes)]
+        Client is accessing a name.
 
 
     [ReliableType.ServerLoginGood(1 byte)]
-    Player login accepted.
+        Player login accepted.
 
     [ReliableType.ServerLoginBad(1 byte)] [Reason Length(2 bytes)] [Reason String(X bytes)]
-    Player login rejected and reason provided.
+        Player login rejected and reason provided.
 
 
     [ReliableType.SetPlayer(1 byte)] [PlayerId(1 byte)]
-    [Score(2 bytes)] [Wins(4 bytes)] [Losses(4 bytes)]
-    [Skin(1 byte)] [Team(1 byte)] [Name Length(1 byte)] [Name(X bytes)]
-    Add/update a player on the player list.
+        [Score(2 bytes)] [Wins(4 bytes)] [Losses(4 bytes)]
+        [Skin(1 byte)] [Team(1 byte)] [Name Length(1 byte)] [Name(X bytes)]
+        Add/update a player on the player list.
 
     [ReliableType.RemovePlayer(1 byte)] [PlayerId(1 byte)]
-    Remove the player.
+        Remove the player.
 
     [ReliableType.PlayerKill(1 byte)]
-    [Killer PlayerId(1 byte)] [Killee PlayerId(1 byte)]
-    [Killer New Score(2 bytes)] [Killee New Score(2 bytes)]
-    Report a player kill.
+        [Killer PlayerId(1 byte)] [Killee PlayerId(1 byte)]
+        [Killer New Score(2 bytes)] [Killee New Score(2 bytes)]
+        Report a player kill.
 
 
     [ReliableType.ChatRequest(1 byte)] [Message Length(2 bytes)] [Message(X bytes)]
-    Message to send to server.
+        Message to send to server.
 
     [ReliableType.Chat(1 byte)] [PlayerId(1 byte)] [Message Length(2 bytes)] [Message(X bytes)]
-    Message received from server.
-    Does not support historical messages from before they logged in.
+        Message received from server.
+        Does not support historical messages from before they logged in.
 */
-
 export enum ReliableType {
     SetId = 0,
 

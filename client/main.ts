@@ -101,7 +101,7 @@ export class Player {
     }
 };
 
-export let SelfId: i32 = -1;
+export let SelfNetworkId: i32 = -1;
 export let PlayerMap = new Map<u8, Player>();
 export let PlayerList: Array<Player> = new Array<Player>(0);
 
@@ -111,8 +111,8 @@ export let FrameSelf: Player;
 
 export function UpdateFrameInfo(): void {
     HasFrameSelf = false;
-    if (SelfId != -1 && PlayerMap.has(u8(SelfId))) {
-        FrameSelf = PlayerMap.get(u8(SelfId));
+    if (SelfNetworkId != -1 && PlayerMap.has(u8(SelfNetworkId))) {
+        FrameSelf = PlayerMap.get(u8(SelfNetworkId));
         HasFrameSelf = true;
     }
 }
@@ -127,6 +127,7 @@ function RenderPlayers(local_ts: u64): void {
     render_player_ts = local_ts;
 
     Physics.ForEachPlayerOnScreen((p: Physics.PlayerCollider, sx: f32, sy: f32) => {
+        jsConsoleLog("ON SCREEN: " + p.client_render_player!.name);
         // Calculate shine from sun
         let sun_x: f32 = p.x;
         if (sun_x > Physics.kMapWidth * 0.5) {
@@ -336,7 +337,7 @@ export function OnConnectionOpen(now_msec: f64): void {
     });
 
     PlayerMap.clear();
-    SelfId = -1;
+    SelfNetworkId = -1;
     TimeSync = new Netcode.TimeSync();
 
     SendTimeSync();
@@ -477,6 +478,14 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
     }
 }
 
+function UpdateSelf(): void {
+    const players_count = PlayerList.length;
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = PlayerList[i];
+        p.is_self = i32(p.network_id) == SelfNetworkId;
+    }
+}
+
 export function OnConnectionReliableData(buffer: Uint8Array): void {
     if (buffer.length < 1) {
         // Ignore short messages
@@ -490,7 +499,9 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
         const type: u8 = load<u8>(ptr, 0);
 
         if (type == Netcode.ReliableType.SetId && remaining >= 2) {
-            SelfId = load<u8>(ptr, 1);
+            SelfNetworkId = i32(load<u8>(ptr, 1));
+            UpdateSelf();
+
             offset += 2;
         } else if (type == Netcode.ReliableType.ServerLoginGood) {
             jsServerLoginGood();
@@ -520,6 +531,8 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 player.network_id = network_id;
 
                 PlayerList.push(player);
+
+                UpdateSelf();
             }
 
             player.score = load<u16>(ptr, 2);
@@ -739,8 +752,6 @@ export function RenderFrame(
                 FrameSelf.Collider.ay = fsy * accel / mag;
             }
         }
-
-        FrameSelf.is_self = true;
     }
 
     // Include latest position and acceleration in position update message
@@ -783,11 +794,6 @@ export function RenderFrame(
     }
 
     RenderContext.I.Flush();
-
-    // Clear is_self flag
-    if (HasFrameSelf) {
-        FrameSelf.is_self = false;
-    }
 
     UpdateMusic(local_ts);
 }
