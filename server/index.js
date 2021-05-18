@@ -419,7 +419,11 @@ const wasmImports = {
                 return;
             }
 
-            client.dc_reliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+            try {
+                client.dc_reliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+            } catch (error) {
+                // Client disconnected
+            }
         },
         jsSendUnreliable: (id, buffer) => {
             let client = webrtc_local_map.get(id);
@@ -432,7 +436,11 @@ const wasmImports = {
                 return;
             }
 
-            client.dc_unreliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+            try {
+                client.dc_unreliable.sendMessageBinary(wasmExports.__getUint8ArrayView(buffer));
+            } catch (error) {
+                // Client disconnected
+            }
         }
     }
 };

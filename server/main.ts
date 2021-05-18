@@ -364,7 +364,7 @@ export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
 export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 export function Initialize(t_msec: f64): void {
-    Physics.Initialize(t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
+    Physics.Initialize(true, t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
         // FIXME
     });
 }
@@ -381,5 +381,5 @@ export function OnTick(now_msec: f64): void {
     //Physics.SimulateTo(t, t);
 
     // Collect GC after simulation tasks are done
-    __collect();
+    //__collect();
 }

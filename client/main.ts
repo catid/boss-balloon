@@ -103,15 +103,13 @@ export class Player {
 
 export let SelfId: i32 = -1;
 export let PlayerMap = new Map<u8, Player>();
+export let PlayerList: Array<Player> = new Array<Player>(0);
 
 // Temporary self/player list for current frame
 export let HasFrameSelf: bool = false;
 export let FrameSelf: Player;
-export let FramePlayers: Player[]; // temp
 
 export function UpdateFrameInfo(): void {
-    FramePlayers = PlayerMap.values();
-
     HasFrameSelf = false;
     if (SelfId != -1 && PlayerMap.has(u8(SelfId))) {
         FrameSelf = PlayerMap.get(u8(SelfId));
@@ -180,14 +178,14 @@ function RenderProjectiles(local_ts: u64): void {
 }
 
 function RenderArrows(local_ts: u64): void {
-    const players_count = FramePlayers.length;
+    const players_count = PlayerList.length;
 
     if (players_count == 0) {
         return;
     }
 
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = FramePlayers[i];
+        const p = PlayerList[i];
 
         if (p.on_screen || p.is_self || p.Collider.is_ghost) {
             continue;
@@ -265,9 +263,9 @@ function UpdateMusic(t: u64): void {
     let enemy_near: bool = false;
     let highest_size: i32 = 0;
 
-    const players_count = FramePlayers.length;
+    const players_count = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = FramePlayers[i];
+        const p = PlayerList[i];
 
         if (p.Collider.team == FrameSelf.Collider.team) {
             continue;
@@ -333,7 +331,7 @@ export function OnConnectionOpen(now_msec: f64): void {
 
     jsConsoleLog("UDP link up");
 
-    Physics.Initialize(now_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
+    Physics.Initialize(false, now_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
         // FIXME: Handle bullet collision
     });
 
@@ -510,16 +508,18 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
 
             offset += 3 + len;
         } else if (type == Netcode.ReliableType.SetPlayer && remaining >= 15) {
-            let id: u8 = load<u8>(ptr, 1);
+            let network_id: u8 = load<u8>(ptr, 1);
             const team: u8 = load<u8>(ptr, 13);
 
             let player: Player | null = null;
-            if (PlayerMap.has(id)) {
-                player = PlayerMap.get(id);
+            if (PlayerMap.has(network_id)) {
+                player = PlayerMap.get(network_id);
             } else {
                 player = new Player(team);
-                PlayerMap.set(id, player);
-                player.network_id = id;
+                PlayerMap.set(network_id, player);
+                player.network_id = network_id;
+
+                PlayerList.push(player);
             }
 
             player.score = load<u16>(ptr, 2);
@@ -536,7 +536,7 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
 
             player.SetName(String.UTF8.decodeUnsafe(ptr + 15, name_len, false));
 
-            jsConsoleLog("SetPlayer: " + id.toString() + " = " + player.name.toString());
+            jsConsoleLog("SetPlayer: " + network_id.toString() + " = " + player.name.toString());
 
             offset += 15 + name_len;
         } else if (type == Netcode.ReliableType.RemovePlayer && remaining >= 2) {
@@ -706,7 +706,7 @@ export function RenderFrame(
     // Update positions to current time
     Physics.SimulateTo(local_ts, server_ts);
 
-    // Update HasFrameSelf, FrameSelf, FramePlayers
+    // Update HasFrameSelf, FrameSelf, PlayerList
     UpdateFrameInfo();
 
     if (HasFrameSelf) {
@@ -749,9 +749,9 @@ export function RenderFrame(
     // Rendering:
 
     // Clear on_screen flag for all players
-    const players_count: i32 = FramePlayers.length;
+    const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
-        const p = FramePlayers[i];
+        const p = PlayerList[i];
         p.on_screen = false;
     }
 
@@ -792,5 +792,5 @@ export function RenderFrame(
     UpdateMusic(local_ts);
 
     // Collect GC after render tasks are done
-    __collect();
+    //__collect();
 }

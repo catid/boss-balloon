@@ -344,7 +344,7 @@ export let BulletList: Array<Physics.Projectile> = new Array<Physics.Projectile>
 function IsBombServerTime(server_shot_ts: u64): bool {
     return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % 4 == 0;
 }
-
+kBulletSpeed
 function PlayerFireProjectile(
     p: Physics.PlayerCollider, local_ts: u64, server_ts: u64, is_bomb: bool,
     x: f32, y: f32, vx: f32, vy: f32, dirty: bool): void {
@@ -391,6 +391,8 @@ function PlayerFireProjectile(
 
 function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
     const players_count = PlayerList.length;
+
+    jsConsoleLog("FireProjectiles: local_ts = " + local_ts.toString() + " server_ts = " + server_ts.toString());
 
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
@@ -925,7 +927,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
     // FIXME: For now we do not generate projectiles on the client side.
     // In the future we can do latency hiding by predicting where the bullets will be,
     // and then "correct" the projectile positions when the server sends us info.
-    if (local_ts == server_ts) {
+    if (ShouldGenerateProjectiles) {
         GeneratePlayerProjectiles(local_ts, server_ts);
     }
 
@@ -1022,6 +1024,8 @@ export function IncorporateServerPosition(
     // bit and doesn't cause bullets to miss.
     p.t = local_sent_ts;
 
+    return;
+
     // If a new shot has been fired:
     const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
     const server_shot_ts: u64 = server_ts - last_shot_offset;
@@ -1064,7 +1068,10 @@ export function IncorporateClientPosition(p: Physics.PlayerCollider, local_ts: u
 //------------------------------------------------------------------------------
 // Initialize
 
-export function Initialize(t_msec: f64, on_projectile_hit: (killee: PlayerCollider, killer: PlayerCollider) => void): void {
+let ShouldGenerateProjectiles: bool = false;
+
+export function Initialize(should_generate_projectiles: bool, t_msec: f64, on_projectile_hit: (killee: PlayerCollider, killer: PlayerCollider) => void): void {
+    ShouldGenerateProjectiles = should_generate_projectiles;
     OnProjectileHit = on_projectile_hit;
     InitTimeConversion(t_msec);
     InitializeCollisions();
