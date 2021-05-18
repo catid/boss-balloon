@@ -379,7 +379,4 @@ export function OnTick(now_msec: f64): void {
 
     // FIXME
     //Physics.SimulateTo(t, t);
-
-    // Collect GC after simulation tasks are done
-    //__collect();
 }

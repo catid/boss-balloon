@@ -790,7 +790,4 @@ export function RenderFrame(
     }
 
     UpdateMusic(local_ts);
-
-    // Collect GC after render tasks are done
-    //__collect();
 }
