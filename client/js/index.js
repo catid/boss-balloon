@@ -33,18 +33,6 @@ var SoundEffects = {
 
 
 //------------------------------------------------------------------------------
-// Buffer API
-
-let ReliableRecvBuffer, UnreliableRecvBuffer, SendBuffer; // Uint8Array
-
-function SetupPacketBuffers() {
-    ReliableRecvBuffer = new Uint8Array(memory.buffer, wasmExports["GetPacketReliableRecvBuffer"](), wasmExports["kPacketBufferBytes"]);
-    UnreliableRecvBuffer = new Uint8Array(memory.buffer, wasmExports["GetPacketUnreliableRecvBuffer"](), wasmExports["kPacketBufferBytes"]);
-    SendBuffer = new Uint8Array(memory.buffer, wasmExports["GetPacketSendBuffer"](), wasmExports["kPacketBufferBytes"]);
-}
-
-
-//------------------------------------------------------------------------------
 // WebRTC
 
 let webrtc_conn = null;
@@ -174,8 +162,13 @@ function StartRTCPeerConnection(on_offer) {
         let recv_msec = performance.now();
         //console.log('onmessage:', webrtc_unreliable.readyState, ev);
 
-        UnreliableRecvBuffer.set(new Uint8Array(ev.data));
-        wasmExports["OnConnectionUnreliableData"](recv_msec, ev.data.length);
+        // Make a copy of the buffer into wasm memory
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
+
+        wasmExports["OnConnectionUnreliableData"](recv_msec, dataRef);
+
+        // Release resource
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_unreliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_unreliable.readyState, ev);
@@ -205,8 +198,13 @@ function StartRTCPeerConnection(on_offer) {
     webrtc_reliable.onmessage = ev => {
         //console.log('onmessage:', webrtc_reliable.readyState, ev);
 
-        ReliableRecvBuffer.set(new Uint8Array(ev.data));
-        wasmExports["OnConnectionReliableData"](ev.data.length);
+        // Make a copy of the buffer into wasm memory
+        const dataRef = wasmExports["__pin"](wasmExports["__newArray"](wasmExports["UINT8ARRAY_ID"], new Uint8Array(ev.data)));
+
+        wasmExports["OnConnectionReliableData"](dataRef);
+
+        // Release resource
+        wasmExports["__unpin"](dataRef);
     };
     webrtc_reliable.onbufferedamountlow = ev => {
         //console.log('onbufferedamountlow:', webrtc_reliable.readyState, ev);
@@ -435,14 +433,14 @@ wasmImports["javascript"]["jsConsoleLog"] = (m) => {
 wasmImports["javascript"]["jsGetMilliseconds"] = () => {
     return performance.now();
 };
-wasmImports["javascript"]["jsSendReliable"] = (bytes) => {
+wasmImports["javascript"]["jsSendReliable"] = (buffer) => {
     if (webrtc_reliable != null) {
-        webrtc_reliable.send(new Uint8Array(SendBuffer, 0, bytes));
+        webrtc_reliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
-wasmImports["javascript"]["jsSendUnreliable"] = (bytes) => {
+wasmImports["javascript"]["jsSendUnreliable"] = (buffer) => {
     if (webrtc_unreliable != null) {
-        webrtc_unreliable.send(new Uint8Array(SendBuffer, 0, bytes));
+        webrtc_unreliable.send(wasmExports["__getUint8ArrayView"](buffer));
     }
 };
 wasmImports["javascript"]["jsPlayMusic"] = (name) => {
@@ -521,8 +519,6 @@ function startRender(wasm_file) {
             ASWebGLReady(obj, importObject);
 
             wasmExports["Initialize"]();
-
-            SetupPacketBuffers();
 
             StartWebsocket();
 

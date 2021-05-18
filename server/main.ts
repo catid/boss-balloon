@@ -361,6 +361,8 @@ export function SendTimeSync(client: ConnectedClient, send_msec: f64): void {
 //------------------------------------------------------------------------------
 // Initialization
 
+export const UINT8ARRAY_ID = idof<Uint8Array>();
+
 export function Initialize(t_msec: f64): void {
     Physics.Initialize(true, t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
         // FIXME
