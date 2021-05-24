@@ -202,7 +202,7 @@ class WebRTCClient {
                     if (this.client != null) {
                         wasmExports.OnSendTimer(this.client);
                     }
-                }, 100);
+                }, 83); // = 1/12 of a second
 
                 // Start accepting messages
                 this.dc_unreliable.onMessage((msg) => {

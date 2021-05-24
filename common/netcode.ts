@@ -36,9 +36,7 @@ export const kMaxPacketBytes: i32 = 1100;
         Reply to TimeSync.  Used to test the time sync code.
 
     [UnreliableType.ClientPosition(1 byte)] [Client-23bit-SendTimestamp(3 bytes)]
-        [x(2 bytes)] [y(2 bytes)]
-        [vx(2 bytes)] [vy(2 bytes)]
-        [accel angle(2 bytes)]
+        [x(2 bytes)] [y(2 bytes)] [vx(2 bytes)] [vy(2 bytes)] [accel angle(2 bytes)]
         Sent by client to request a position change.
         We use client time in the message to improve the time sync dataset.
         Finger position relative to center: ((x or y) - 32768) / 32768 = -1..1
@@ -47,20 +45,16 @@ export const kMaxPacketBytes: i32 = 1100;
 /*
     [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
         [Player Count(1 byte)] Repeated (LSB-first): {
-            [PlayerId(1 byte)]
-            [x(2 bytes)] [y(2 bytes)]
-            [vx(1 byte)] [vy(1 byte)]
-            [accel angle(2 bytes)]
+            [PlayerId(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(1 byte)] [vy(1 byte)] [accel angle(2 bytes)]
         } (9 bytes per client)
-    This is sent at ~10 FPS by server to update client's own and other clients' positions.
+    This is sent at 12 FPS by server to update client's own and other clients' positions,
+    when clients are near eachother.
 
-    [UnreliableType.ShotPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
+    [UnreliableType.ServerShot(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
         [Player Count(1 byte)] Repeated (LSB-first): {
-            [PlayerId(1 byte)]
-            [Size-Last(1 byte)] [x-Last(2 bytes)] [y-Last(2 bytes)] [vx-Last(2 bytes)] [vy-Last(2 bytes)]
-            [Size(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(2 bytes)] [vy(2 bytes)]
-        } (19 bytes per client)
-    This is sent at ~2 FPS by server to update client's shots, about once per shot.
+            [PlayerId(1 byte)] [Size(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(2 bytes)] [vy(2 bytes)]
+        } (10 bytes per client)
+    This is sent at 3 FPS by server to update client's shots, about once per shot.
     It includes the previous shot too in case a packet gets lost.
 
     Size of the ship implies number of guns firing bullets.
@@ -84,6 +78,7 @@ export enum UnreliableType {
     TimeSyncPong = 1,
     ClientPosition = 2,
     ServerPosition = 3,
+    ServerShot = 4
 }
 
 /*
@@ -861,10 +856,27 @@ export function ConvertVXto16(vx: f32): i16 {
     return i16(temp);
 }
 
-const inv_vx_factor: f32 = 1.0 / 32767.0;
+// Breaks down after |(vx,vy)| > 1.0
+export function ConvertVXto8(vx: f32): i8 {
+    let temp: i32 = i32(vx * 127.0);
+    if (temp > 127) {
+        temp = 127;
+    } else if (temp < -127) {
+        temp = -127;
+    }
+    return i8(temp);
+}
+
+const inv_vx16_factor: f32 = 1.0 / 32767.0;
 
 export function Convert16toVX(vx: i16): f32 {
-    return vx * inv_vx_factor;
+    return f32(vx) * inv_vx16_factor;
+}
+
+const inv_vx8_factor: f32 = 1.0 / 127.0;
+
+export function Convert8toVX(vx: i8): f32 {
+    return f32(vx) * inv_vx8_factor;
 }
 
 const aa_factor: f32 = 65534.0 / (Mathf.PI * 2.0);

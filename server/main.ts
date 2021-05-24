@@ -20,8 +20,12 @@ class ConnectedClient {
     losses: u32 = 0;
     skin: u8 = 0;
 
+    // Is the player dead and respawning?
+    spawning: bool = true; // Initially spawning
+    spawn_timer_start_ts: u64 = 0;
+
     // Counter for OnSendTimer() that reduces the data for players farther away
-    full_position_counter: u8 = 0;
+    position_subsample_counter: u8 = 0;
     send_position_info: bool = false;
     send_shot_info: bool = false;
 
@@ -125,6 +129,10 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
 
     let client = new ConnectedClient(javascript_id, team);
 
+    // Make sure they spawn right away
+    client.spawning = true;
+    client.spawn_timer_start_ts = Physics.MasterTimestamp - 10_000 * 4;
+
     client.network_id = IdAssigner.Acquire();
     client.name = "Player " + client.network_id.toString();
 
@@ -177,96 +185,255 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
     (2) Send current and last bullet instead of sending the same info twice, to reduce packet send rate. [DONE]
     (3) Take velocities into account and avoid sending player positions or bullets that they will never see. [TODO]
 */
-function SendPositionsTo(client: ConnectedClient): void {
-    // Position of client
+function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
+    // Position of client we are sending to
     const x0: f32 = client.Collider.x, y0: f32 = client.Collider.y;
 
     // Larger scale = Client sees farther
     const scale: f32 = Physics.ScaleForSize(client.Collider.size);
 
     // Distance past which we only send projectile info
-    const projectile_only_thresh: f32 = scale * 2.0;
-    const pot2: f32 = projectile_only_thresh * projectile_only_thresh;
+    const pos_limit: f32 = scale * 2.0;
+    const pos_limit2: f32 = pos_limit * pos_limit;
 
-    let full_count: i32 = 0;
-    let partial_count: i32 = 0;
+    let pos_count: i32 = 0, shot_count: i32 = 0;
 
     const total_clients: i32 = ClientList.length;
     for (let i: i32 = 0; i < total_clients; ++i) {
         let c = ClientList[i];
 
+        c.send_position_info = false;
+        c.send_shot_info = false;
+
+        // Always send shot info if we can
+        if (c.Collider.has_last_shot) {
+            c.send_shot_info = true;
+            ++shot_count;
+        }
+
+        // Do not send a player his own position, just his own shots
         if (c.network_id == client.network_id) {
-            c.send_position_info = false;
-            c.send_shot_info = false;
             continue;
         }
 
         const dx = Physics.MapDiff(c.Collider.x, x0);
         const dy = Physics.MapDiff(c.Collider.y, y0);
         const mag2 = dx * dx + dy * dy;
-        if (mag2 > pot2) {
-            c.send_position_info = false;
-            c.send_shot_info = true;
-            ++partial_count;
-        } else {
+        if (mag2 < pos_limit2) {
             c.send_position_info = true;
-            c.send_shot_info = false;
-            ++full_count;
+            ++pos_count;
         }
     }
 
-    // FIXME: Send new position/shot info here
+    const bytes_per_shot: i32 = 10;
+    const bytes_per_position: i32 = 9;
 
-    const max_clients_per_datagram: i32 = 55;
-    const bytes_per_client: i32 = 20;
+    let physics_ts: u32 = u32(Physics.MasterTimestamp) & 0x7fffff;
 
-    let local_ts: u32 = u32(Physics.MasterTimestamp) & 0x7fffff;
-    let datagram_count: i32 = (client_count + max_clients_per_datagram - 1) / max_clients_per_datagram;
+    let player_index: i32 = 0;
 
-    let j: i32 = 0;
+    if (send_shots && shot_count > 0) {
 
-    for (let i: i32 = 0; i < datagram_count; ++i) {
-        const remaining: i32 = client_count - j;
-        let actual_count: i32 = datagram_count;
-        if (actual_count > remaining) {
-            actual_count = remaining;
+        jsConsoleLog("Sending: pos=" + pos_count.toString() + " shot=" + shot_count.toString());
+
+        // Combine shots and positions in messages to reduce number of packets.
+        // Send shots first because that information is more important.
+
+        const max_shots_per_datagram = (Netcode.kMaxPacketBytes - 5) / bytes_per_shot;
+
+        // While sending purely shot datagrams:
+
+        while (shot_count >= max_shots_per_datagram) {
+            let write_count: i32 = max_shots_per_datagram;
+
+            const buffer: Uint8Array = new Uint8Array(5 + write_count * bytes_per_shot);
+            let ptr: usize = buffer.dataStart;
+
+            store<u8>(ptr, Netcode.UnreliableType.ServerShot, 0);
+            Netcode.Store24(ptr, 1, physics_ts);
+            store<u8>(ptr, u8(write_count), 4);
+            ptr += 5;
+
+            const player_count: i32 = ClientList.length;
+            for (; player_index < player_count; ++player_index) {
+                const client_i = ClientList[player_index];
+
+                if (!client_i.send_shot_info) {
+                    continue;
+                }
+                --shot_count;
+
+                const physics_i = client_i.Collider;
+
+                store<u8>(ptr, client_i.network_id, 0);
+                store<u8>(ptr, physics_i.size, 1);
+                store<u16>(ptr, Netcode.ConvertXto16(physics_i.last_shot_x), 2);
+                store<u16>(ptr, Netcode.ConvertXto16(physics_i.last_shot_y), 4);
+                store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vx), 6);
+                store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vy), 8);
+
+                ptr += bytes_per_position;
+
+                if (--write_count <= 0) {
+                    break;
+                }
+            }
+
+            jsSendUnreliable(client.javascript_id, buffer);
         }
 
-        const buffer: Uint8Array = new Uint8Array(6 + bytes_per_client * actual_count);
+        // Overlap packet that has some of each:
+        if (shot_count > 0)
+        {
+            let shot_write_count: i32 = shot_count;
+            let combined_buffer_size: i32 = 5 + shot_write_count * bytes_per_shot;
+            let pos_write_count: i32 = (Netcode.kMaxPacketBytes - combined_buffer_size - 5) / bytes_per_position;
+            if (pos_write_count > pos_count) {
+                pos_write_count = pos_count;
+            }
+            if (pos_write_count > 0) {
+                combined_buffer_size += 5 + pos_write_count * bytes_per_position;
+            }
+
+            const buffer: Uint8Array = new Uint8Array(combined_buffer_size);
+            let ptr: usize = buffer.dataStart;
+
+            // Shots first
+            store<u8>(ptr, Netcode.UnreliableType.ServerShot, 0);
+            Netcode.Store24(ptr, 1, physics_ts);
+            store<u8>(ptr, u8(shot_write_count), 4);
+            ptr += 5;
+
+            const player_count: i32 = ClientList.length;
+            for (; player_index < player_count; ++player_index) {
+                const client_i = ClientList[player_index];
+
+                if (!client_i.send_shot_info) {
+                    continue;
+                }
+                --shot_count;
+
+                const physics_i = client_i.Collider;
+
+                store<u8>(ptr, client_i.network_id, 0);
+                store<u8>(ptr, physics_i.size, 1);
+                store<u16>(ptr, Netcode.ConvertXto16(physics_i.last_shot_x), 2);
+                store<u16>(ptr, Netcode.ConvertXto16(physics_i.last_shot_y), 4);
+                store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vx), 6);
+                store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vy), 8);
+
+                ptr += bytes_per_position;
+
+                if (--shot_write_count <= 0) {
+                    break;
+                }
+            }
+
+            // Restart player list
+            player_index = 0;
+
+            if (pos_write_count > 0) {
+                // Positions second
+                store<u8>(ptr, Netcode.UnreliableType.ServerPosition, 0);
+                Netcode.Store24(ptr, 1, physics_ts);
+                store<u8>(ptr, u8(pos_write_count), 4);
+                ptr += 5;
+
+                for (; player_index < player_count; ++player_index) {
+                    const client_i = ClientList[player_index];
+
+                    if (!client_i.send_position_info) {
+                        continue;
+                    }
+                    --pos_count;
+
+                    const physics_i = client_i.Collider;
+
+                    store<u8>(ptr, client_i.network_id, 0);
+                    store<u16>(ptr, Netcode.ConvertXto16(physics_i.x), 1);
+                    store<u16>(ptr, Netcode.ConvertXto16(physics_i.y), 3);
+                    store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vx), 5);
+                    store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vy), 6);
+                    store<u16>(ptr, Netcode.ConvertAccelto16(physics_i.ax, physics_i.ay), 7);
+        
+                    ptr += bytes_per_position;
+
+                    if (--pos_write_count <= 0) {
+                        break;
+                    }
+                }
+            }
+
+            jsSendUnreliable(client.javascript_id, buffer);
+        } else {
+            player_index = 0;
+        }
+    }
+
+    if (pos_count <= 0) {
+        return;
+    }
+
+    // Send player positions:
+
+    const pos_bytes = 5 + pos_count * bytes_per_position;
+    const max_pos_per_datagram = (Netcode.kMaxPacketBytes - 5) / bytes_per_position;
+
+    while (pos_count > 0) {
+        let write_count: i32 = pos_count;
+        if (write_count > max_pos_per_datagram) {
+            write_count = max_pos_per_datagram;
+        }
+
+        // Break the player list up into separate packets
+
+        const buffer: Uint8Array = new Uint8Array(5 + write_count * bytes_per_position);
         let ptr: usize = buffer.dataStart;
 
         store<u8>(ptr, Netcode.UnreliableType.ServerPosition, 0);
-        Netcode.Store24(ptr, 1, local_ts);
-        store<u8>(ptr, u8(client.Collider.size), 4);
-        store<u8>(ptr, u8(actual_count), 5);
+        Netcode.Store24(ptr, 1, physics_ts);
+        store<u8>(ptr, u8(write_count), 4);
+        ptr += 5;
 
-        let pptr: usize = ptr + 6;
-        for (let k: i32 = 0; k < actual_count; ++k) {
-            const client_j = ClientList[j];
-            const physics_j = client.Collider;
+        const player_count: i32 = ClientList.length;
+        for (; player_index < player_count; ++player_index) {
+            const client_i = ClientList[player_index];
 
-            store<u8>(pptr, client_j.network_id, 0);
-            store<u8>(pptr, physics_j.size, 1);
-            store<u16>(pptr, Netcode.ConvertXto16(physics_j.x), 2);
-            store<u16>(pptr, Netcode.ConvertXto16(physics_j.y), 4);
-            store<i16>(pptr, Netcode.ConvertVXto16(physics_j.vx), 6);
-            store<i16>(pptr, Netcode.ConvertVXto16(physics_j.vy), 8);
-            store<u16>(pptr, Netcode.ConvertAccelto16(physics_j.ax, physics_j.ay), 10);
-            store<u16>(pptr, Netcode.ConvertXto16(physics_j.last_shot_x), 12);
-            store<u16>(pptr, Netcode.ConvertXto16(physics_j.last_shot_y), 14);
-            store<i16>(pptr, Netcode.ConvertVXto16(physics_j.last_shot_vx), 16);
-            store<i16>(pptr, Netcode.ConvertVXto16(physics_j.last_shot_vy), 18);
+            if (!client_i.send_position_info) {
+                continue;
+            }
+            --pos_count;
 
-            pptr += bytes_per_client;
-            ++j;
+            const physics_i = client_i.Collider;
+
+            store<u8>(ptr, client_i.network_id, 0);
+            store<u16>(ptr, Netcode.ConvertXto16(physics_i.x), 1);
+            store<u16>(ptr, Netcode.ConvertXto16(physics_i.y), 3);
+            store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vx), 5);
+            store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vy), 6);
+            store<u16>(ptr, Netcode.ConvertAccelto16(physics_i.ax, physics_i.ay), 7);
+
+            ptr += bytes_per_position;
+
+            if (--write_count <= 0) {
+                break;
+            }
         }
 
         jsSendUnreliable(client.javascript_id, buffer);
     }
 }
 
+// Called at 12 Hz
 export function OnSendTimer(client: ConnectedClient): void {
-    SendPositionsTo(client);
+    // Every 4 calls:
+    let send_shots: bool = false;
+    if (++client.position_subsample_counter >= 4) {
+        send_shots = true;
+        client.position_subsample_counter = 0;
+    }
+
+    SendPositionsTo(client, send_shots);
 
     // Send queued reliable data:
 
@@ -424,7 +591,7 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 export function Initialize(t_msec: f64): void {
     Physics.Initialize(true, t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
-        // FIXME
+        jsConsoleLog("Player hit!");
     });
 }
 
@@ -436,6 +603,19 @@ export function OnTick(now_msec: f64): void {
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = Physics.ConvertWallclock(now_msec);
 
-    // FIXME
-    //Physics.SimulateTo(t, t);
+    Physics.SimulateTo(t, t);
+
+    // Spawn clients
+    const count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < count; ++i) {
+        const client = ClientList[i];
+        if (client.spawning) {
+            const dt: i32 = i32(t - client.spawn_timer_start_ts);
+            // 8 seconds between spawns
+            if (dt > 8_000 * 4) {
+                client.spawning = false;
+                Physics.SetRandomSpawnPosition(client.Collider);
+            }
+        }
+    }
 }

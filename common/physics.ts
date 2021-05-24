@@ -220,6 +220,7 @@ export class PlayerCollider {
     last_shot_local_ts: u64 = 0;
 
     // Last shot info for server
+    has_last_shot: bool = false;
     last_shot_x: f32 = 0.0;
     last_shot_y: f32 = 0.0;
     last_shot_vx: f32 = 0.0;
@@ -264,6 +265,8 @@ export function CreatePlayerCollider(team: u8): Physics.PlayerCollider {
     const p: Physics.PlayerCollider = new Physics.PlayerCollider();
     p.team = team;
 
+    p.SetSize(0);
+
     // Initially creates a ghost player until we get position data
     p.is_ghost = true;
 
@@ -291,14 +294,13 @@ export function RemovePlayerCollider(p: Physics.PlayerCollider): void {
 }
 
 export function SetRandomSpawnPosition(p: Physics.PlayerCollider): void {
-    const border: f32 = 2.0;
-    const k: f32 = kMapWidth - border * 2.0;
-    p.x = Mathf.random() * k + border;
-    p.y = Mathf.random() * k + border;
+    p.x = Mathf.random() * kMapWidth;
+    p.y = Mathf.random() * kMapWidth;
     p.vx = 0.0;
     p.vy = 0.0;
     p.ax = 0.0;
     p.ay = 0.0;
+    p.is_ghost = false;
 
     p.SetSize(kSpawnSize);
 }
@@ -349,10 +351,14 @@ function IsBombServerTime(server_shot_ts: u64): bool {
 function PlayerFireProjectile(
     p: Physics.PlayerCollider, local_ts: u64, server_ts: u64, is_bomb: bool,
     x: f32, y: f32, vx: f32, vy: f32, dirty: bool): void {
-    const player_speed: f32 = Mathf.sqrt(vx * vx + vy * vy);
-    const inv_player_speed: f32 = 1.0 / player_speed;
+    // Ghosts do not fire
+    if (p.is_ghost) {
+        p.has_last_shot = false;
+        return;
+    }
 
     // Record last shot player state, useful for server
+    p.has_last_shot = true;
     p.last_shot_local_ts = local_ts;
     p.last_shot_x = x;
     p.last_shot_y = y;
@@ -393,8 +399,6 @@ function PlayerFireProjectile(
 function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
     const players_count = PlayerList.length;
 
-    jsConsoleLog("FireProjectiles: local_ts = " + local_ts.toString() + " server_ts = " + server_ts.toString());
-
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
         PlayerFireProjectile(
@@ -409,21 +413,14 @@ let last_shot_server_ts: u64 = 0;
 function GeneratePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     const server_to_local: i64 = i64(local_ts - server_ts);
 
-    const last_fuzzy_ts: i64 = i64(last_shot_server_ts) - (kProjectileInterval / 2);
-    const dt: i32 = i32(server_ts - last_fuzzy_ts);
-    if (dt < 0) {
-        // Not at least half shot interval elapsed yet
-        return;
-    }
-
     let final_shot_ts = server_ts - i32(u32(server_ts) % u32(kProjectileInterval));
-    const shots_dt: i32 = i32(final_shot_ts - last_fuzzy_ts);
-    if (shots_dt < 0) {
+    const dt: i32 = i32(final_shot_ts - last_shot_server_ts - kProjectileInterval / 2);
+    if (dt < 0) {
         // No new shots before the last one we already fired
         return;
     }
 
-    let shot_count: u32 = u32(shots_dt) / u32(kProjectileInterval) + 1;
+    let shot_count: u32 = u32(dt) / u32(kProjectileInterval) + 1;
     if (shot_count > 5) {
         shot_count = 5;
     }
@@ -932,8 +929,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         GeneratePlayerProjectiles(local_ts, server_ts);
     }
 
-    const bomb_count: i32 = BombList.length;
-    for (let i: i32 = 0; i < bomb_count; ++i) {
+    for (let i: i32 = 0; i < BombList.length; ++i) {
         const p = BombList[i];
 
         // If needs re-sync:
@@ -953,8 +949,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         }
     }
 
-    const bullet_count: i32 = BulletList.length;
-    for (let i: i32 = 0; i < bullet_count; ++i) {
+    for (let i: i32 = 0; i < BulletList.length; ++i) {
         const p = BulletList[i];
 
         // If needs re-sync:
@@ -1009,10 +1004,11 @@ export function SimulateTo(local_ts: u64, server_ts: u64): void {
 // provided x, y, vx, vy, ax, ay members.
 export function IncorporateServerPosition(
     p: Physics.PlayerCollider,
-    local_ts: u64, send_delay: i32, server_ts: u64,
-    shot_x: f32, shot_y: f32,
-    shot_vx: f32, shot_vy: f32): void
+    local_ts: u64, send_delay: i32, server_ts: u64): void
 {
+    // This implies they are not a ghost anymore
+    p.is_ghost = false;
+
     // Send delay is always at least 1/2 millisecond,
     // and the ping time to the other side of the globe is under 200 milliseconds,
     // so bound the upper end too.
@@ -1024,8 +1020,25 @@ export function IncorporateServerPosition(
     // We assume that if the client is ahead of the server's simulation it's just by a little
     // bit and doesn't cause bullets to miss.
     p.t = local_sent_ts;
+}
 
-    return;
+// We assume that the player object has been updated by the caller to the
+// provided x, y, vx, vy, ax, ay members.
+export function IncorporateServerShot(
+    p: Physics.PlayerCollider,
+    local_ts: u64, send_delay: i32, server_ts: u64,
+    shot_x: f32, shot_y: f32,
+    shot_vx: f32, shot_vy: f32): void
+{
+    // This implies they are not a ghost anymore
+    p.is_ghost = false;
+
+    // Send delay is always at least 1/2 millisecond,
+    // and the ping time to the other side of the globe is under 200 milliseconds,
+    // so bound the upper end too.
+    send_delay = clamp_i32(send_delay, 2, 500 * 4);
+
+    const local_sent_ts: u64 = local_ts - send_delay;
 
     // If a new shot has been fired:
     const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
@@ -1058,6 +1071,8 @@ export function IncorporateClientPosition(p: Physics.PlayerCollider, local_ts: u
     send_delay = clamp_i32(send_delay, 2, 500 * 4);
 
     const local_sent_ts: u64 = local_ts - send_delay;
+
+    p.dirty = true;
 
     // Next time we update the physics simulation, we'll fix this.
     // We assume that if the client is ahead of the server's simulation it's just by a little
