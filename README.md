@@ -11,8 +11,6 @@ Player needs to generate his own bullets - It looks too laggy on other screens
 
 Update player scores for kills
 
-Dark side of the map where clouds change
-
 Collision detection response
 
 
