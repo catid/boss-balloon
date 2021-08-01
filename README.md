@@ -26,8 +26,8 @@ Collision detection response
 - Collision detection on server
 - 
 - Server list on HTML page
-- Name selection => URL
-	- 
+- Name selection to URL
+
 ```
 Cannot GET /test
 ```
