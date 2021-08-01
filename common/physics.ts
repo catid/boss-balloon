@@ -383,7 +383,7 @@ function PlayerFireProjectile(
         pp.server_ts = server_ts;
         pp.team = p.team;
         pp.is_bomb = is_bomb;
-        pp.angle0 = angle0;
+        pp.angle0 = Mathf.random() * Mathf.PI;
         pp.dirty = dirty;
 
         if (is_bomb) {

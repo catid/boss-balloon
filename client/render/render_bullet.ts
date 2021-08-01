@@ -43,7 +43,7 @@ const kFS: string = `
 
         float t = (sin(u_t) + 1.0) * 0.5;
 
-        float beta = pow(alpha, 3.0 + cos(u_t * 2.0) * 0.5);
+        float beta = pow(alpha, 3.0 + t);
 
         vec3 flare_color = mix(u_color, vec3(0.0, 0.0, 0.0), beta);
 

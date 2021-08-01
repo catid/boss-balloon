@@ -8,8 +8,6 @@ Bullet shine is too bright at max
 
 Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
 
-Bullet shine angles are all identical
-
 Player needs to generate his own bullets - It looks too laggy on other screens
 
 
