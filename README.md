@@ -51,7 +51,7 @@ To set up a development environment:
 ```
 npm update
 npm run genkey
-(press accept all defaults)
+(accept all defaults)
 ```
 
 Update server binary and run it locally:
@@ -86,11 +86,13 @@ To update all of the servers to latest code:
 BossBalloon.io
 
 Server list:
+```
 - sf: 165.232.141.94
 - ny: 67.205.173.217
 - lon: 188.166.156.97
 - jpn: 172.104.122.175
 - aus: 192.53.169.160
+```
 
 SphereShooter.io
 BalloonShooter.io
