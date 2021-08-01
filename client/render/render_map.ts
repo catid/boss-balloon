@@ -26,6 +26,7 @@ const kFragmentShaderCode: string = `
     varying vec2 v_coord;
 
     uniform float u_t;
+    uniform float u_color;
 
     const float cloudscale = 0.8;
     const float speed = 0.03;
@@ -126,7 +127,7 @@ const kFragmentShaderCode: string = `
         
         c += c1;
         
-        vec3 skycolour = skycolour2;
+        vec3 skycolour = mix(skycolour2, skycolour1, u_color);
         vec3 cloudcolour = vec3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight*c), 0.0, 1.0);
        
         f = cloudcover + cloudalpha*f*r;
@@ -145,6 +146,7 @@ export class RenderMapProgram {
     u_xy: WebGLUniformLocation;
     u_scale: WebGLUniformLocation;
     u_t: WebGLUniformLocation;
+    u_color: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
     indices_buffer: WebGLBuffer;
@@ -175,6 +177,7 @@ export class RenderMapProgram {
         this.u_xy = gl.getUniformLocation(this.shader_program, "u_xy");
         this.u_scale = gl.getUniformLocation(this.shader_program, "u_scale");
         this.u_t = gl.getUniformLocation(this.shader_program, "u_t");
+        this.u_color = gl.getUniformLocation(this.shader_program, "u_color");
 
         this.vertices_buffer = gl.createBuffer();
         this.indices_buffer = gl.createBuffer();
@@ -207,6 +210,7 @@ export class RenderMapProgram {
     public DrawMap(
         x: f32, y: f32,
         scale: f32,
+        color: f32,
         t: u64): void {
         const gl = RenderContext.I.gl;
 
@@ -222,6 +226,7 @@ export class RenderMapProgram {
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_t, f32(t % 1000000) / 1000000.0);
+        gl.uniform1f(this.u_color, color);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
      }
