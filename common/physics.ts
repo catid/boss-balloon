@@ -32,8 +32,8 @@ export const kMapFriction: f32 = 0.001;
 export const kPlayerVelocityLimit: f32 = 1.0;
 export const kBulletSpeed: f32 = 0.5;
 
-export const kBombRadius: f32 = 2.0; // map units
-export const kBulletRadius: f32 = 20.0; // map units
+export const kBombRadius: f32 = 20.0; // map units
+export const kBulletRadius: f32 = 5.0; // map units
 
 export const kMapWidth: f32 = 32000.0; // map units
 

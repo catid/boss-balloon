@@ -35,7 +35,6 @@ const kFS: string = `
     varying vec2 v_pos;
 
     void main() {
-        // Radius of circle is always 1, so dist2 = 1 on the border
         float x = 1.0 - abs(v_pos.x);
         float y = 1.0 - abs(v_pos.y);
         float alpha = clamp((x * x + y * y) * 0.5, 0.0, 1.0);

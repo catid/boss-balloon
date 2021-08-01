@@ -173,7 +173,7 @@ function RenderProjectiles(local_ts: u64): void {
         BombProgram.DrawBomb(kTeamColors[p.team], sx, sy, p.angle0 + proj_angle);
     });
 
-    BulletProgram.BeginBullets(local_ts, 0.1 * Physics.InvScreenScale);
+    BulletProgram.BeginBullets(local_ts, 0.05 * Physics.InvScreenScale);
 
     Physics.ForEachBulletOnScreen((p: Physics.Projectile, sx: f32, sy: f32) => {
         BulletProgram.DrawBullet(kTeamColors[p.team], sx, sy, p.angle0 + proj_angle);
