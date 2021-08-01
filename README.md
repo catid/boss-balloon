@@ -4,8 +4,6 @@ Player scale is too small compared to bullets/bombs - those should be smaller
 
 Player shots seem to accumulate and stick together forever instead of disappearing when they age out
 
-Bullet shine is too bright at max
-
 Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
 
 Player needs to generate his own bullets - It looks too laggy on other screens
@@ -14,8 +12,6 @@ Player needs to generate his own bullets - It looks too laggy on other screens
 Update player scores for kills
 
 Dark side of the map where clouds change
-
-Latency hiding for bullet firing, and fix-up
 
 Collision detection response
 
