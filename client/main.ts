@@ -438,6 +438,11 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
 
                     const c: Physics.PlayerCollider = p.Collider;
 
+                    if (c.is_ghost) {
+                        jsConsoleLog("Player just spawned(on pos): " + p.name);
+                        c.is_ghost = false;
+                    }
+
                     p.last_position_local_ts = local_ts;
 
                     c.x = Netcode.Convert16toX(load<u16>(pptr, 1));
@@ -456,7 +461,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     c.ay = ay;
 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
-                    Physics.IncorporateServerPosition(p.Collider, local_ts, send_delay, server_ts);
+                    Physics.IncorporateServerPosition(c, local_ts, send_delay, server_ts);
                 }
 
                 pptr += bytes_per_client;
@@ -498,15 +503,15 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     // FIXME: Correct our shot positions too
                     //if (p.is_self)
                     {
-                        if (p.Collider.is_ghost) {
-                            // Just spawned
-                            p.Collider.is_ghost = false;
-                            p.Collider.x = last_shot_x;
-                            p.Collider.y = last_shot_y;
-                            p.Collider.vx = 0.0;
-                            p.Collider.vy = 0.0;
-                            p.Collider.ax = 0.0;
-                            p.Collider.ay = 0.0;
+                        if (c.is_ghost) {
+                            jsConsoleLog("Player just spawned(on shot): " + p.name);
+                            c.is_ghost = false;
+                            c.x = last_shot_x;
+                            c.y = last_shot_y;
+                            c.vx = 0.0;
+                            c.vy = 0.0;
+                            c.ax = 0.0;
+                            c.ay = 0.0;
                         }
                         //continue;
                     }
@@ -514,7 +519,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
 
                     Physics.IncorporateServerShot(
-                        p.Collider,
+                        c,
                         local_ts, send_delay, server_ts,
                         last_shot_x, last_shot_y,
                         last_shot_vx, last_shot_vy);
@@ -844,14 +849,16 @@ export function RenderFrame(
 
     RenderArrows(local_ts);
 
-    // Draw string to finger position
-    if (finger_on_screen) {
-        StringProgram.DrawString(
-            kStringColor,
-            fsx,
-            fsy,
-            0.0, 0.0, // center of screen
-            local_ts);
+    if (HasFrameSelf) {
+        // Draw string to finger position
+        if (finger_on_screen) {
+            StringProgram.DrawString(
+                kStringColor,
+                fsx,
+                fsy,
+                0.0, 0.0, // center of screen
+                local_ts);
+        }
     }
 
     RenderContext.I.Flush();

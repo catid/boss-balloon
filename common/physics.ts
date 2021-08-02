@@ -245,7 +245,7 @@ export class PlayerCollider {
     mass: f32 = 1.0;
 
     // Is player dead?
-    is_ghost: bool = false;
+    is_ghost: bool = true;
 
     // Useful flag for rendering on client side
     on_screen: bool = false;
@@ -824,7 +824,7 @@ function SimulatePlayerStep(p: Physics.PlayerCollider, dt: f32): void {
     let norm: f32 = Mathf.sqrt(vx * vx + vy * vy);
     let mag = norm;
 
-    if (norm <= 0.0) {
+    if (p.collider_matrix_index != -1 && norm <= 0.0) {
         // Skip if we are not moving
         return;
     }
@@ -844,9 +844,14 @@ function SimulatePlayerStep(p: Physics.PlayerCollider, dt: f32): void {
     }
 
     // Rescale velocity down to limit
-    mag /= norm;
-    vx *= mag;
-    vy *= mag;
+    if (norm > 0.001) {
+        mag /= norm;
+        vx *= mag;
+        vy *= mag;
+    } else {
+        vx = 0.0;
+        vy = 0.0;
+    }
 
     p.vx = vx;
     p.vy = vy;
