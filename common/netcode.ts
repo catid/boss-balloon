@@ -43,15 +43,15 @@ export const kMaxPacketBytes: i32 = 1100;
 */
 
 /*
-    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
-        [Player Count(1 byte)] Repeated (LSB-first): {
+    [UnreliableType.ServerPosition(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)] [Player Count(1 byte)]
+        Repeated (LSB-first): {
             [PlayerId(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(1 byte)] [vy(1 byte)] [accel angle(2 bytes)]
         } (9 bytes per client)
     This is sent at 12 FPS by server to update client's own and other clients' positions,
     when clients are near eachother.
 
-    [UnreliableType.ServerShot(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)]
-        [Player Count(1 byte)] Repeated (LSB-first): {
+    [UnreliableType.ServerShot(1 byte)] [Server-23bit-PhysicsTimestamp(3 bytes)] [Player Count(1 byte)]
+        Repeated (LSB-first): {
             [PlayerId(1 byte)] [Size(1 byte)] [x(2 bytes)] [y(2 bytes)] [vx(2 bytes)] [vy(2 bytes)]
         } (10 bytes per client)
     This is sent at 3 FPS by server to update client's shots, about once per shot.

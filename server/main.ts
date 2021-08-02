@@ -261,7 +261,6 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                 if (!client_i.send_shot_info) {
                     continue;
                 }
-                --shot_count;
 
                 const physics_i = client_i.Collider;
 
@@ -272,8 +271,9 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                 store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vx), 6);
                 store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vy), 8);
 
-                ptr += bytes_per_position;
+                ptr += bytes_per_shot;
 
+                --shot_count;
                 if (--write_count <= 0) {
                     break;
                 }
@@ -285,8 +285,7 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
         // Overlap packet that has some of each:
         if (shot_count > 0)
         {
-            let shot_write_count: i32 = shot_count;
-            let combined_buffer_size: i32 = 5 + shot_write_count * bytes_per_shot;
+            let combined_buffer_size: i32 = 5 + shot_count * bytes_per_shot;
             let pos_write_count: i32 = (Netcode.kMaxPacketBytes - combined_buffer_size - 5) / bytes_per_position;
             if (pos_write_count > pos_count) {
                 pos_write_count = pos_count;
@@ -301,7 +300,7 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
             // Shots first
             store<u8>(ptr, Netcode.UnreliableType.ServerShot, 0);
             Netcode.Store24(ptr, 1, physics_ts);
-            store<u8>(ptr, u8(shot_write_count), 4);
+            store<u8>(ptr, u8(shot_count), 4);
             ptr += 5;
 
             const player_count: i32 = ClientList.length;
@@ -311,7 +310,6 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                 if (!client_i.send_shot_info) {
                     continue;
                 }
-                --shot_count;
 
                 const physics_i = client_i.Collider;
 
@@ -322,9 +320,9 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                 store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vx), 6);
                 store<i16>(ptr, Netcode.ConvertVXto16(physics_i.last_shot_vy), 8);
 
-                ptr += bytes_per_position;
+                ptr += bytes_per_shot;
 
-                if (--shot_write_count <= 0) {
+                if (--shot_count <= 0) {
                     break;
                 }
             }
@@ -345,7 +343,6 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                     if (!client_i.send_position_info) {
                         continue;
                     }
-                    --pos_count;
 
                     const physics_i = client_i.Collider;
 
@@ -355,9 +352,10 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
                     store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vx), 5);
                     store<i8>(ptr, Netcode.ConvertVXto8(physics_i.vy), 6);
                     store<u16>(ptr, Netcode.ConvertAccelto16(physics_i.ax, physics_i.ay), 7);
-        
+
                     ptr += bytes_per_position;
 
+                    --pos_count;
                     if (--pos_write_count <= 0) {
                         break;
                     }
@@ -402,7 +400,6 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
             if (!client_i.send_position_info) {
                 continue;
             }
-            --pos_count;
 
             const physics_i = client_i.Collider;
 
@@ -415,6 +412,7 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
 
             ptr += bytes_per_position;
 
+            --pos_count;
             if (--write_count <= 0) {
                 break;
             }
