@@ -190,7 +190,7 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
     const x0: f32 = client.Collider.x, y0: f32 = client.Collider.y;
 
     // Larger scale = Client sees farther
-    const scale: f32 = Physics.ScaleForSize(client.Collider.size);
+    const scale: f32 = Physics.ScaleForSize(client.Collider.size) * Physics.kMapScreenWidth;
 
     // Distance past which we only send projectile info
     const pos_limit: f32 = scale * 2.0;

@@ -39,8 +39,8 @@ export const kMapWidth: f32 = 32000.0; // map units
 
 export const kRenderScreenRadius: f32 = 1.0;
 
-export const kMapScreenBaseRadius: f32 = 1000.0;
-export const kInvMapScreenBaseRadius: f32 = 1.0 / kMapScreenBaseRadius;
+export const kMapScreenWidth: f32 = 1000.0;
+export const kInvMapScreenWidth: f32 = 1.0 / kMapScreenWidth;
 
 export const kPlayerMatrixWidth: i32 = 512;
 export const kProjectileMatrixWidth: i32 = 512;
@@ -135,14 +135,14 @@ export function SetScreenCenter(x: f32, y: f32): void {
 export let ScreenScale: f32 = 1.0, InvScreenScale: f32 = 1.0;
 
 // Factor to convert from map to screen coordinates
-export let MapToScreen: f32 = kInvMapScreenBaseRadius, ScreenToMap: f32 = kMapScreenBaseRadius;
+export let MapToScreen: f32 = kInvMapScreenWidth, ScreenToMap: f32 = kMapScreenWidth;
 
 export function SetScreenScale(scale: f32): void {
     ScreenScale = scale;
     InvScreenScale = 1.0 / scale;
 
-    MapToScreen = kInvMapScreenBaseRadius * ScreenScale;
-    ScreenToMap = kMapScreenBaseRadius * InvScreenScale;
+    MapToScreen = kInvMapScreenWidth * ScreenScale;
+    ScreenToMap = kMapScreenWidth * InvScreenScale;
 }
 
 export function MapToScreenX(map_x: f32): f32 {
