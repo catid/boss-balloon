@@ -1,7 +1,5 @@
 # TODO
 
-Player shots seem to accumulate and stick together forever instead of disappearing when they age out
-
 Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
 
 Player needs to generate his own bullets - It looks too laggy on other screens

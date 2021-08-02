@@ -287,7 +287,7 @@ export function RemovePlayerCollider(p: Physics.PlayerCollider): void {
     for (let i: i32 = 0; i < count; ++i) {
         if (PlayerList[i] == p) {
             PlayerList[i] = PlayerList[count - 1];
-            PlayerList.length--;
+            PlayerList.pop();
             break;
         }
     }
@@ -445,7 +445,7 @@ function RemovePlayerProjectiles(p: Physics.PlayerCollider): void {
         if (pp.shooter == p) {
             MatrixRemoveProjectile(pp);
             BombList[i] = BombList[BombList.length - 1];
-            BombList.length--;
+            BombList.pop();
             --i;
         }
     }
@@ -454,7 +454,7 @@ function RemovePlayerProjectiles(p: Physics.PlayerCollider): void {
         if (pp.shooter == p) {
             MatrixRemoveProjectile(pp);
             BulletList[i] = BulletList[BulletList.length - 1];
-            BulletList.length--;
+            BulletList.pop();
             --i;
         }
     }
@@ -508,6 +508,40 @@ function InitializeCollisions(): void {
     }
 }
 
+function MatrixRemovePlayer(p: Physics.PlayerCollider): void {
+    if (p.collider_matrix_index == -1) {
+        return;
+    }
+
+    let old_bin = p.collider_matrix_bin!;
+
+    // Move last element to take its place
+    let last_p = old_bin[old_bin.length - 1];
+    old_bin[p.collider_matrix_index] = last_p;
+    last_p.collider_matrix_index = p.collider_matrix_index;
+
+    old_bin.pop();
+
+    p.collider_matrix_index = -1;
+}
+
+function MatrixRemoveProjectile(p: Physics.Projectile): void {
+    if (p.collider_matrix_index == -1) {
+        return;
+    }
+
+    let old_bin = p.collider_matrix_bin!;
+
+    // Move last element to take its place
+    let last_p = old_bin[old_bin.length - 1];
+    old_bin[p.collider_matrix_index] = last_p;
+    last_p.collider_matrix_index = p.collider_matrix_index;
+
+    old_bin.pop();
+
+    p.collider_matrix_index = -1;
+}
+
 function UpdatePlayerMatrix(p: Physics.PlayerCollider): void {
     let tx: u32 = PositionToPlayerMatrixTile(p.x);
     let ty: u32 = PositionToPlayerMatrixTile(p.y);
@@ -521,12 +555,8 @@ function UpdatePlayerMatrix(p: Physics.PlayerCollider): void {
         return;
     }
 
-    // Remove from old bin:
-    if (p.collider_matrix_index != -1) {
-        let old_bin = p.collider_matrix_bin!;
-        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
-        old_bin.length--;
-    }
+    // Remove from old bin
+    MatrixRemovePlayer(p);
 
     // Insert into new bin
     p.collider_matrix_bin = new_bin;
@@ -547,35 +577,13 @@ function UpdateProjectileMatrix(m: Array<Array<Projectile>>, p: Projectile): voi
         return;
     }
 
-    // Remove from old bin:
-    if (p.collider_matrix_index != -1) {
-        let old_bin = p.collider_matrix_bin!;
-        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
-        old_bin.length--;
-    }
+    // Remove from old bin
+    MatrixRemoveProjectile(p);
 
     // Insert into new bin
     p.collider_matrix_bin = new_bin;
     p.collider_matrix_index = new_bin.length;
     new_bin.push(p);
-}
-
-function MatrixRemovePlayer(p: Physics.PlayerCollider): void {
-    if (p.collider_matrix_index != -1) {
-        let old_bin = p.collider_matrix_bin!;
-        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
-        old_bin.length--;
-        p.collider_matrix_index = -1;
-    }
-}
-
-function MatrixRemoveProjectile(p: Physics.Projectile): void {
-    if (p.collider_matrix_index != -1) {
-        let old_bin = p.collider_matrix_bin!;
-        old_bin[p.collider_matrix_index] = old_bin[old_bin.length - 1];
-        old_bin.length--;
-        p.collider_matrix_index = -1;
-    }
 }
 
 function IsColliding(p: Physics.PlayerCollider, projectile: Physics.Projectile): bool {
@@ -942,7 +950,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             MatrixRemoveProjectile(p);
             BombList[i] = BombList[BombList.length - 1];
-            BombList.length--;
+            BombList.pop();
             --i;
         } else {
             UpdateProjectileMatrix(BombMatrix, p);
@@ -962,7 +970,7 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         if (i32(local_ts - p.local_ts) > kProjectileMaxAge) {
             MatrixRemoveProjectile(p);
             BulletList[i] = BulletList[BulletList.length - 1];
-            BulletList.length--;
+            BulletList.pop();
             --i;
         } else {
             UpdateProjectileMatrix(BulletMatrix, p);
