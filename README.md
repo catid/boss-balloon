@@ -1,8 +1,9 @@
 # TODO
 
-Player position packet parsing is broken
+Arrows show up even if the player is on the screen
 
-Projectile shot x/y are swapped
+Third player to join does not show up on second player screen, but shows up on first player.
+Third player cannot see anyone.
 
 Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
 
