@@ -1,5 +1,9 @@
 # TODO
 
+Player position packet parsing is broken
+
+Projectile shot x/y are swapped
+
 Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
 
 Player needs to generate his own bullets - It looks too laggy on other screens

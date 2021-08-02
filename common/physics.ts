@@ -141,8 +141,8 @@ export function SetScreenScale(scale: f32): void {
     ScreenScale = scale;
     InvScreenScale = 1.0 / scale;
 
-    MapToScreen = kInvMapScreenWidth * ScreenScale;
-    ScreenToMap = kMapScreenWidth * InvScreenScale;
+    MapToScreen = kInvMapScreenWidth * InvScreenScale;
+    ScreenToMap = kMapScreenWidth * ScreenScale;
 }
 
 export function MapToScreenX(map_x: f32): f32 {

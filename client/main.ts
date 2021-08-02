@@ -827,7 +827,7 @@ export function RenderFrame(
         const origin_dy = Physics.MapDiff(Physics.ScreenCenterY, 0.0);
         const origin_dist = Mathf.max(Mathf.abs(origin_dx), Mathf.abs(origin_dy)) / (Physics.kMapWidth * 0.5);
         const map_color: f32 = Mathf.pow(origin_dist, 5.0) * 10.0;
-        MapProgram.DrawMap(-origin_sx, -origin_sy, Physics.InvScreenScale, map_color, local_ts);
+        MapProgram.DrawMap(-origin_sx, -origin_sy, Physics.ScreenScale, map_color, local_ts);
     }
 
     // Fills in on_screen that is used by RenderArrows later
