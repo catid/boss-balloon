@@ -130,6 +130,8 @@ function RenderPlayers(local_ts: u64): void {
     render_player_ts = local_ts;
 
     Physics.ForEachPlayerOnScreen((p: Physics.PlayerCollider, sx: f32, sy: f32) => {
+        p.on_screen = true;
+
         // Calculate shine from sun
         let sun_x: f32 = p.x;
         if (sun_x > Physics.kMapWidth * 0.5) {
@@ -190,7 +192,7 @@ function RenderArrows(local_ts: u64): void {
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
 
-        if (p.on_screen || p.is_self || p.Collider.is_ghost) {
+        if (p.Collider.on_screen || p.is_self || p.Collider.is_ghost) {
             continue;
         }
 
@@ -816,7 +818,7 @@ export function RenderFrame(
     const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
         const p = PlayerList[i];
-        p.on_screen = false;
+        p.Collider.on_screen = false;
     }
 
     // Render map with correct offset and scale

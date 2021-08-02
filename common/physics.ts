@@ -247,6 +247,9 @@ export class PlayerCollider {
     // Is player dead?
     is_ghost: bool = false;
 
+    // Useful flag for rendering on client side
+    on_screen: bool = false;
+
     // Which collision bin are we in?
     collider_matrix_bin: Array<Physics.PlayerCollider> | null = null;
     collider_matrix_index: i32 = -1;

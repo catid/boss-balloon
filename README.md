@@ -1,11 +1,9 @@
 # TODO
 
-Arrows show up even if the player is on the screen
-
 Third player to join does not show up on second player screen, but shows up on first player.
 Third player cannot see anyone.
 
-Second player to connect does not appear on the screen but seems to be set over network - Self Id not set?
+Add stars when sky darkens
 
 Player needs to generate his own bullets - It looks too laggy on other screens
 
