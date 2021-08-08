@@ -2,7 +2,7 @@
 
 On spawn, avatar is invisible until it moves for the first time.
 
-Player spawns in center if "Player just spawned on shot" occurs after "Hello World" chat message.
+Player spawns in center if mouse move happens before server spawns us.
 
 Third player to join does not show up on second player screen, but shows up on first player.
 Third player cannot see anyone.
@@ -10,14 +10,11 @@ Third player cannot see anyone.
 Player needs to generate his own bullets - It looks too laggy on other screens
 
 
-Update player scores for kills
-
 Collision detection response
 
+Update player scores for kills
 
-- Collision detection on client
-- Collision detection on server
-- 
+
 - Server list on HTML page
 - Name selection to URL
 

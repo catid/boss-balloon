@@ -45,11 +45,11 @@ function RemoveClient(client: ConnectedClient): void {
     const client_count: i32 = ClientList.length;
     for (let i: i32 = 0; i < client_count; ++i) {
         const client_i = ClientList[i];
-        if (client_i != client) {
+        if (client_i == client) {
             const new_count = client_count - 1;
             ClientList[i] = ClientList[new_count];
             ClientList.length = new_count;
-            return;
+            break;
         }
     }
 }
@@ -449,6 +449,8 @@ export function OnConnectionClose(client: ConnectedClient): void {
     IdAssigner.Release(client.network_id);
 
     RemoveClient(client);
+
+    Physics.RemovePlayerCollider(client.Collider);
 
     let remove_msg = Netcode.MakeRemovePlayer(client.network_id);
     const client_count: i32 = ClientList.length;

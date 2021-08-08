@@ -619,9 +619,19 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
                 Physics.RemovePlayerCollider(player.Collider);
 
                 PlayerMap.delete(id);
-            }
 
-            jsConsoleLog("RemovePlayer: " + id.toString());
+                // Remove from player list
+                const players_count = PlayerList.length;
+                for (let i: i32 = 0; i < players_count; ++i) {
+                    if (PlayerList[i] == player) {
+                        PlayerList[i] = PlayerList[players_count - 1];
+                        PlayerList.pop();
+                        break;
+                    }
+                }
+
+                jsConsoleLog("RemovePlayer: " + id.toString() + ": " + player.name);
+            }
 
             offset += 2;
         } else if (type == Netcode.ReliableType.PlayerKill && remaining >= 7) {
