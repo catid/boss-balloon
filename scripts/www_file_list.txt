@@ -1,9 +1,9 @@
-www/gfx/fire_code_sdf.png
-www/music/aesir_chaos.mp3
-www/music/deadly_slot_game.mp3
-www/music/replica.mp3
-www/sfx/explosion-hq.mp3
-www/sfx/laserSmall_000.ogg
+gfx/fire_code_sdf.png
+music/aesir_chaos.mp3
+music/deadly_slot_game.mp3
+music/replica.mp3
+sfx/explosion-hq.mp3
+sfx/laserSmall_000.ogg
 bossballoon.wasm
 favicon.ico
 index.html
