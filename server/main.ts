@@ -233,9 +233,6 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
     let player_index: i32 = 0;
 
     if (send_shots && shot_count > 0) {
-
-        jsConsoleLog("Sending: pos=" + pos_count.toString() + " shot=" + shot_count.toString());
-
         // Combine shots and positions in messages to reduce number of packets.
         // Send shots first because that information is more important.
 

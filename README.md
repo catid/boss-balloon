@@ -74,13 +74,19 @@ To update all of the servers to latest code:
 
 # Server List
 
-BossBalloon.io
+BossBalloon.io -> sf
 
-Server list:
+DigitalOcean:
+
 ```
 - sf: 165.232.141.94
 - ny: 67.205.173.217
 - lon: 188.166.156.97
+```
+
+Linode:
+
+```
 - jpn: 172.104.122.175
 - aus: 192.53.169.160
 ```

@@ -521,6 +521,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     }
 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
+                    jsConsoleLog("send_delay = " + send_delay.toString());
 
                     Physics.IncorporateServerShot(
                         c,
