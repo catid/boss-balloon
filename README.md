@@ -1,5 +1,13 @@
 # TODO
 
+Client seems to hang after a while
+
+iOS version does not load
+
+After running a server for a while, the time sync seems to be off even after refresh
+
+
+
 Player needs to generate his own bullets - It looks too laggy on other screens
 
 
