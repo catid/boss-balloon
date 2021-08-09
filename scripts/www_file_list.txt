@@ -1,4 +1,4 @@
-gfx/fire_code_sdf.png
+gfx/fira_code_sdf.png
 music/aesir_chaos.mp3
 music/deadly_slot_game.mp3
 music/replica.mp3
