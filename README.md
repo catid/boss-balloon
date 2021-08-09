@@ -1,7 +1,5 @@
 # TODO
 
-Player spawns in center if mouse move happens before server spawns us.
-
 Player needs to generate his own bullets - It looks too laggy on other screens
 
 

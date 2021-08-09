@@ -828,8 +828,10 @@ export function RenderFrame(
         }
     }
 
-    // Include latest position and acceleration in position update message
-    SendPosition(local_ts);
+    if (HasFrameSelf && !FrameSelf.Collider.is_ghost) {
+        // Include latest position and acceleration in position update message
+        SendPosition(local_ts);
+    }
 
     // Rendering:
 
