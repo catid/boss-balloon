@@ -203,12 +203,11 @@ cd ~/server
 npm install
 ```
 
-Copy the letsencrypt keys to ~/server/key.pem and ~/server/cert.pem
+Link the letsencrypt keys as ~/server/key.pem and ~/server/cert.pem
 
 ```
-cp /etc/letsencrypt/live/ny.bossballoon.io/fullchain.pem ~/server/cert.pem
-
-cp /etc/letsencrypt/live/ny.bossballoon.io/privkey.pem ~/server/key.pem
+ln -s /etc/letsencrypt/live/ny.bossballoon.io/fullchain.pem ~/server/cert.pem
+ln -s /etc/letsencrypt/live/ny.bossballoon.io/privkey.pem ~/server/key.pem
 ```
 
 Run server on boot:
