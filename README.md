@@ -1,11 +1,6 @@
 # TODO
 
-On spawn, avatar is invisible until it moves for the first time.
-
 Player spawns in center if mouse move happens before server spawns us.
-
-Third player to join does not show up on second player screen, but shows up on first player.
-Third player cannot see anyone.
 
 Player needs to generate his own bullets - It looks too laggy on other screens
 

@@ -450,6 +450,9 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     c.vx = Netcode.Convert8toVX(load<i8>(pptr, 5));
                     c.vy = Netcode.Convert8toVX(load<i8>(pptr, 6));
 
+                    // Mark collider dirty in case we teleported to a new collision bin
+                    c.dirty = true;
+
                     const aa: u16 = load<u16>(pptr, 7);
                     let ax: f32 = 0.0, ay: f32 = 0.0;
                     if (aa != 0) {
@@ -506,6 +509,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                         if (c.is_ghost) {
                             jsConsoleLog("Player just spawned(on shot): " + p.name);
                             c.is_ghost = false;
+                            c.dirty = true;
                             c.x = last_shot_x;
                             c.y = last_shot_y;
                             c.vx = 0.0;

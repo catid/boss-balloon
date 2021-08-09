@@ -824,10 +824,13 @@ function SimulatePlayerStep(p: Physics.PlayerCollider, dt: f32): void {
     let norm: f32 = Mathf.sqrt(vx * vx + vy * vy);
     let mag = norm;
 
-    if (p.collider_matrix_index != -1 && norm <= 0.0) {
-        // Skip if we are not moving
+    if (!p.dirty && norm <= 0.0) {
+        // Optimization: Skip if player is not moving
         return;
     }
+
+    // Disable dirty flag after first step
+    p.dirty = false;
 
     // Apply friction directly to velocity prior to max limit
     const vf: f32 = kMapFriction * inv_mass;
@@ -884,6 +887,7 @@ function ResyncDirtyPlayer(p: Physics.PlayerCollider, local_ts: u64): void {
     // Note: This does not handle collisions during the roll-up.
 
     while (dt >= step) {
+        // Note: This may clear dirty flag
         SimulatePlayerStep(p, f32(step) * 0.25);
         dt -= step;
     }
