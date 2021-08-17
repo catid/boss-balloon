@@ -202,10 +202,20 @@ function RenderLasers(local_ts: u64): void {
                 local_ts,
                 Physics.LaserScaleForSize(c.size) * Physics.InvScreenScale,
                 c.laser_angle,
-                pulserate);
+                pulserate,
+                0.0);
         }
         else {
-            //LaserProgram.DrawLaser(kTeamColors[c.team], screen_x, screen_y, c.laser_angle, 16.0);
+            const pulserate: f32 = 5.0 * f32(age - Physics.kLaserSubIntervalTime * 3) / f32(Physics.kLaserSubIntervalTime) + 1.0;
+            LaserProgram.DrawLaser(
+                kTeamColors[c.team],
+                screen_x,
+                screen_y,
+                local_ts,
+                Physics.LaserScaleForSize(c.size) * Physics.InvScreenScale,
+                c.laser_angle,
+                pulserate,
+                1.0);
         }
     }
 }
