@@ -29,29 +29,27 @@ const kFS: string = `
     // Input from application:
     uniform vec3 u_color;
     uniform float u_t;
-    uniform float u_pulserate;
 
     // Input from vertex shader:
     varying vec2 v_pos;
 
     void main() {
         // pulsate
-        float pulse_x = sin(v_pos.x * 40.0 + u_t * u_pulserate) + 1.0;
-        float pulse_t = sin(u_t * 2.0 * u_pulserate) + 1.0;
+        float pulse_x = sin(v_pos.x * 40.0 - u_t * 2.0) + 1.0;
+        float pulse_t = sin(u_t) * 0.5 + 1.0;
         vec3 h_color = u_color * pulse_x * pulse_t;
 
         // grating
         float back_value = 1.0;
         if (mod(v_pos.y * 80.0, 1.0) > 0.75 || mod(v_pos.x * 80.0, 1.0) > 0.75) {
-            back_value = 2.15;
+            back_value = 1.7;
         }
 
         // beamize
-        float pulse_beam = sin(u_t * 2.0 * u_pulserate) + 1.0;
-        float beam_width = abs(pulse_beam / (200.0 * v_pos.y));
+        float beam_width = abs(1.0 / (300.0 * v_pos.y));
 
         float alpha = back_value * beam_width;
-        float edge = ( 1.5 - clamp(abs(v_pos.x), 1.4, 1.5) ) * 10.0;
+        float edge = ( 5.0 - clamp(abs(v_pos.x), 4.8, 5.0) ) * 20.0;
         alpha *= edge;
 
         gl_FragColor = vec4(alpha * h_color, clamp(alpha, 0.0, 0.4));
@@ -66,7 +64,6 @@ export class RenderLaserProgram {
     u_color: WebGLUniformLocation;
     u_scale: WebGLUniformLocation;
     u_angle: WebGLUniformLocation;
-    u_pulserate: WebGLUniformLocation;
     u_t: WebGLUniformLocation;
 
     vertices_buffer: WebGLBuffer;
@@ -95,13 +92,12 @@ export class RenderLaserProgram {
         this.u_scale = gl.getUniformLocation(this.program, "u_scale");
         this.u_angle = gl.getUniformLocation(this.program, "u_angle");
         this.u_t = gl.getUniformLocation(this.program, "u_t");
-        this.u_pulserate = gl.getUniformLocation(this.program, "u_pulserate");
 
         this.vertices_buffer = gl.createBuffer();
         this.indices_buffer = gl.createBuffer();
 
-        const w: f32 = 0.05;
-        const h: f32 = 1.5;
+        const w: f32 = 0.04;
+        const h: f32 = 5;
 
         let vertex_data: StaticArray<f32> = new StaticArray<f32>(8);
         vertex_data[0] = -h;
@@ -128,7 +124,7 @@ export class RenderLaserProgram {
         gl.bufferData<u8>(gl.ELEMENT_ARRAY_BUFFER, index_data, gl.STATIC_DRAW);
     }
 
-    public BeginLasers(t: u64, scale: f32): void {
+    public BeginLasers(): void {
         const gl = RenderContext.I.gl;
 
         gl.useProgram(this.program);
@@ -139,18 +135,16 @@ export class RenderLaserProgram {
 
         // attribute | dimensions | data type | normalize | stride bytes | offset bytes
         gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, +false, 8, 0);
-
-        gl.uniform1f(this.u_t, f32((t + 21212121)/8 % 1024) * 2.0 * Mathf.PI / 1024.0);
-        gl.uniform1f(this.u_scale, scale);
     }
 
-    public DrawLaser(color: RenderColor, x: f32, y: f32, angle: f32, pulserate: f32): void {
+    public DrawLaser(color: RenderColor, x: f32, y: f32, t: u64, scale: f32, angle: f32, pulserate: f32): void {
         const gl = RenderContext.I.gl;
 
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_pulserate, pulserate);
+        gl.uniform1f(this.u_t, f32(t) * Mathf.PI / 1024.0 + pulserate * pulserate * Mathf.PI * 2.0);
+        gl.uniform1f(this.u_scale, scale);
 
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }

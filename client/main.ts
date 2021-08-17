@@ -167,7 +167,7 @@ function RenderPlayers(local_ts: u64): void {
 }
 
 function RenderLasers(local_ts: u64): void {
-    LaserProgram.BeginLasers(local_ts, 1.0 * Physics.InvScreenScale);
+    LaserProgram.BeginLasers();
 
     const players_count = PlayerList.length;
 
@@ -194,8 +194,15 @@ function RenderLasers(local_ts: u64): void {
         }
 
         if (age < Physics.kLaserSubIntervalTime * 3) {
-            const speed: f32 = 3.0 * f32(age) / f32(Physics.kLaserSubIntervalTime * 3) + 1.0;
-            LaserProgram.DrawLaser(kTeamColors[c.team], screen_x, screen_y, c.laser_angle, speed);
+            const pulserate: f32 = 3.0 * f32(age) / f32(Physics.kLaserSubIntervalTime * 3) + 1.0;
+            LaserProgram.DrawLaser(
+                kTeamColors[c.team],
+                screen_x,
+                screen_y,
+                local_ts,
+                Physics.LaserScaleForSize(c.size) * Physics.InvScreenScale,
+                c.laser_angle,
+                pulserate);
         }
         else {
             //LaserProgram.DrawLaser(kTeamColors[c.team], screen_x, screen_y, c.laser_angle, 16.0);

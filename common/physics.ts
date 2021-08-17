@@ -26,6 +26,9 @@ export const kMaxScale: f32 = 10.0;
 export const kMinPlayerGuns: i32 = 1; // # bullets fired
 export const kMaxPlayerGuns: i32 = 10;
 
+export const kMinPlayerLaserScale: f32 = 1.0;
+export const kMaxPlayerLaserScale: f32 = 4.0;
+
 export const kMapFriction: f32 = 0.001;
 
 // Velocities are map units per 4 time ticks
@@ -217,6 +220,10 @@ export function RadiusForSize(size: u8): f32 {
 
 export function GunsForSize(size: u8): i32 {
     return i32(size) * (kMaxPlayerGuns - kMinPlayerGuns) / 255 + kMinPlayerGuns;
+}
+
+export function LaserScaleForSize(size: u8): f32 {
+    return lerp_f32(f32(size) / 255.0, kMinPlayerLaserScale, kMaxPlayerLaserScale);
 }
 
 
