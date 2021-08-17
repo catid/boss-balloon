@@ -4,6 +4,7 @@ import { RenderPlayerProgram, RenderPlayerData } from "./render/render_player"
 import { RenderStringProgram } from "./render/render_string"
 import { RenderBombProgram } from "./render/render_bomb"
 import { RenderBulletProgram } from "./render/render_bullet"
+import { RenderLaserProgram } from "./render/render_laser"
 import { RenderMapProgram } from "./render/render_map"
 import { RenderArrowProgram } from "./render/render_arrow"
 import { RenderSunProgram } from "./render/render_sun"
@@ -49,6 +50,7 @@ export let PlayerProgram: RenderPlayerProgram;
 export let StringProgram: RenderStringProgram;
 export let BombProgram: RenderBombProgram;
 export let BulletProgram: RenderBulletProgram;
+export let LaserProgram: RenderLaserProgram;
 export let MapProgram: RenderMapProgram;
 export let ArrowProgram: RenderArrowProgram;
 export let SunProgram: RenderSunProgram;
@@ -162,6 +164,43 @@ function RenderPlayers(local_ts: u64): void {
                 0.32 * Physics.InvScreenScale / r.render_name_data!.width, r.render_name_data!);
         }
     });
+}
+
+function RenderLasers(local_ts: u64): void {
+    LaserProgram.BeginLasers(local_ts, 1.0 * Physics.InvScreenScale);
+
+    const players_count = PlayerList.length;
+
+    if (players_count == 0) {
+        return;
+    }
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = PlayerList[i];
+        const c = p.Collider;
+
+        if (c.is_ghost || !c.laser_active) {
+            continue;
+        }
+
+        const screen_x = Physics.MapToScreenX(c.laser_x);
+        const screen_y = Physics.MapToScreenY(c.laser_y);
+        const age = i32(local_ts) - i32(c.laser_local_ts);
+
+        // If out of sync with laser timestamp:
+        if (age < 0 || age > Physics.kLaserIntervalTime) {
+            c.laser_active = false;
+            continue;
+        }
+
+        if (age < Physics.kLaserSubIntervalTime * 3) {
+            const speed: f32 = 3.0 * f32(age) / f32(Physics.kLaserSubIntervalTime * 3) + 1.0;
+            LaserProgram.DrawLaser(kTeamColors[c.team], screen_x, screen_y, c.laser_angle, speed);
+        }
+        else {
+            //LaserProgram.DrawLaser(kTeamColors[c.team], screen_x, screen_y, c.laser_angle, 16.0);
+        }
+    }
 }
 
 let proj_angle: f32;
@@ -521,7 +560,7 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     }
 
                     const send_delay: i32 = i32(local_ts - local_send_ts);
-                    jsConsoleLog("send_delay = " + send_delay.toString());
+                    //jsConsoleLog("send_delay = " + send_delay.toString());
 
                     Physics.IncorporateServerShot(
                         c,
@@ -766,6 +805,7 @@ export function Initialize(): void {
     StringProgram = new RenderStringProgram();
     BombProgram = new RenderBombProgram();
     BulletProgram = new RenderBulletProgram();
+    LaserProgram = new RenderLaserProgram();
     MapProgram = new RenderMapProgram();
     ArrowProgram = new RenderArrowProgram();
     SunProgram = new RenderSunProgram();
@@ -853,6 +893,8 @@ export function RenderFrame(
         const map_color: f32 = Mathf.pow(origin_dist, 5.0) * 10.0;
         MapProgram.DrawMap(-origin_sx, -origin_sy, Physics.ScreenScale, map_color, local_ts);
     }
+
+    RenderLasers(local_ts);
 
     // Fills in on_screen that is used by RenderArrows later
     RenderPlayers(local_ts);

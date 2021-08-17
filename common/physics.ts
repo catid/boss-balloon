@@ -51,6 +51,25 @@ export const kHitShieldDelay: i32 = 1000 * 4; // time units
 // Must be a power of two
 export const kProjectileInterval: i32 = 512 * 4; // time units
 
+// Multiple of projectile interval between bombs (emits bomb instead of bullet)
+export const kBombInterval: i32 = 4; // projectile counts
+
+// Multiple of projectile interval between lasers (emits laser in addition to bullet)
+export const kLaserInterval: i32 = 8; // projectile counts
+
+// Time units between laser blasts
+export const kLaserIntervalTime: i32 = kProjectileInterval * kLaserInterval;
+
+/*
+    Sub-intervals of laser lifespan (1 second each):
+
+    0: <nothing>
+    1: <slow blink>
+    2: <faster blink>
+    4: <FIRE!>
+*/
+export const kLaserSubIntervalTime: i32 = kLaserIntervalTime / 4;
+
 
 //------------------------------------------------------------------------------
 // Time Units
@@ -226,6 +245,14 @@ export class PlayerCollider {
     last_shot_vx: f32 = 0.0;
     last_shot_vy: f32 = 0.0;
 
+    // Active laser shot info
+    laser_active: bool = false;
+    laser_x: f32 = 0.0;
+    laser_y: f32 = 0.0;
+    laser_angle: f32 = 0.0;
+    // Local timestamp when laser started
+    laser_local_ts: u64 = 0;
+
     size: u8 = 0;
 
     last_collision_local_ts: u64 = 0;
@@ -348,7 +375,11 @@ export let BombList: Array<Physics.Projectile> = new Array<Physics.Projectile>()
 export let BulletList: Array<Physics.Projectile> = new Array<Physics.Projectile>();
 
 function IsBombServerTime(server_shot_ts: u64): bool {
-    return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % 4 == 0;
+    return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % kBombInterval == 0;
+}
+
+function IsLaserServerTime(server_shot_ts: u64): bool {
+    return ((server_shot_ts + kProjectileInterval/2) / kProjectileInterval) % kLaserInterval == 0;
 }
 
 function PlayerFireProjectile(
@@ -410,9 +441,36 @@ function FireProjectiles(local_ts: u64, server_ts: u64, is_bomb: bool): void {
     }
 }
 
+function PlayerFireLaser(
+    local_shot_ts: u64,
+    p: Physics.PlayerCollider,
+    x: f32, y: f32, vx: f32, vy: f32): void {
+    // Ghosts do not fire
+    if (p.is_ghost) {
+        p.laser_active = false;
+        return;
+    }
+
+    p.laser_active = true;
+    p.laser_x = x;
+    p.laser_y = y;
+    p.laser_angle = Mathf.atan2(vy, vx);
+    p.laser_local_ts = local_shot_ts;
+}
+
+function FireLasers(local_shot_ts: u64): void {
+    const players_count = PlayerList.length;
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = PlayerList[i];
+        PlayerFireLaser(local_shot_ts, p, p.x, p.y, p.vx, p.vy);
+    }
+}
+
 // The tricky thing here is the time sync is not stable
 let last_shot_server_ts: u64 = 0;
 
+// This generates all projectiles for all players
 function GeneratePlayerProjectiles(local_ts: u64, server_ts: u64): void {
     const server_to_local: i64 = i64(local_ts - server_ts);
 
@@ -435,6 +493,11 @@ function GeneratePlayerProjectiles(local_ts: u64, server_ts: u64): void {
 
         const local_shot_ts: u64 = u64(server_to_local + server_shot_ts);
         FireProjectiles(local_shot_ts, server_shot_ts, is_bomb);
+
+        const is_laser: bool = IsLaserServerTime(server_shot_ts);
+        if (is_laser) {
+            FireLasers(local_shot_ts);
+        }
 
         server_shot_ts += kProjectileInterval;
     }
@@ -1070,10 +1133,14 @@ export function IncorporateServerShot(
         p.last_shot_local_ts = local_shot_ts;
 
         const is_bomb: bool = IsBombServerTime(server_shot_ts);
-
         PlayerFireProjectile(
             p, local_shot_ts, server_shot_ts, is_bomb,
             shot_x, shot_y, shot_vx, shot_vy, true);
+
+        const is_laser: bool = IsLaserServerTime(server_shot_ts);
+        if (is_laser) {
+            PlayerFireLaser(local_shot_ts, p, shot_x, shot_y, shot_vx, shot_vy);
+        }
     }
 }
 

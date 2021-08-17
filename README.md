@@ -1,5 +1,8 @@
 # TODO
 
+Periodic team-colored laser blasts
+
+
 Client seems to hang after a while
 
 iOS version does not load
