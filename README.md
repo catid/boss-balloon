@@ -1,13 +1,12 @@
 # TODO
 
-Player bullets look way too laggy on his own screen
+Player bullet extrapolation seems too far ahead.
+Caused by: const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
 
 Player needs to generate his own bullets - It looks too laggy on other screens
 
 
 iOS version does not load
-
-After running a server for a while, the time sync seems to be off even after refresh
 
 
 
@@ -17,10 +16,6 @@ Update player scores for kills
 
 
 - Name selection to URL
-
-```
-Cannot GET /test
-```
 
 Future:
 Bomb/bullet fire sounds

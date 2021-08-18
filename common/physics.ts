@@ -1144,6 +1144,8 @@ export function IncorporateServerShot(
     const local_shot_ts: u64 = local_sent_ts - last_shot_offset;
     const shot_dt: i32 = abs_i32(i32(p.last_shot_local_ts - local_shot_ts));
 
+    jsConsoleLog("DELAY = " + send_delay.toString() + " OFFSET = " + last_shot_offset.toString() + " DT = " + shot_dt.toString());
+
     if (shot_dt >= kProjectileInterval / 2) {
         p.last_shot_local_ts = local_shot_ts;
 
