@@ -4,13 +4,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1, maximum-scale=1, user-scalable=no">
+
+    <style type="text/css">
+        body {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            background-color: #222;
+        }
+
+        #canvas_div {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        #login {
+            margin-top: 16px;
+            margin-bottom: 16px;
+            padding-top: 16px;
+            padding-bottom: 16px;
+            padding-left: 16px;
+            padding-right: 16px;
+            background-color: #4a4;
+            font-family: "Lucida Console", "Courier New", monospace;
+        }
+
+        #login_title {
+            margin-top: 16px;
+            margin-bottom: 16px;
+            color: #fff;
+        }
+
+        #server_list {
+            margin-top: 16px;
+            margin-bottom: 16px;
+            padding-top: 16px;
+            padding-bottom: 16px;
+            padding-left: 16px;
+            padding-right: 16px;
+            background-color: #44a;
+            font-family: "Lucida Console", "Courier New", monospace;
+        }
+
+        #server_list_title {
+            margin-top: 16px;
+            margin-bottom: 16px;
+            color: #fff;
+        }
+
+        .server_list_item {
+            margin-top: 16px;
+            margin-bottom: 16px;
+            margin-left: 16px;
+        }
+        .server_list_item a:link {
+            color: #ee0;
+        }
+        .server_list_item a:visited {
+            color: #ee0;
+        }
+        .server_list_item a:hover {
+            color: #ee0;
+        }
+        .server_list_item a:active {
+            color: #ee0;
+        }
+    </style>
+
 </head>
 
-<body style="margin-top: 0px; margin-bottom: 0px; background-color: #222">
-    <div style="margin-top: 0px; margin-bottom: 0px; text-align: center; width: 100%; height: 100%">
+<body>
+    <!-- Game Canvas -->
+    <div id="canvas_div">
         <canvas id="cnvs" width="512" height="512"></canvas>
     </div>
+
+    <!-- Load game script after canvas -->
     <script type="module" src='bossballoon.js'></script>
+
+    <!-- Server List -->
+    <div id="login">
+        <div id="login_title">
+            Enter desired player name and password:
+        </div>
+
+        <div id="login_name">
+            <label for="uname"><b>Player Name</b></label>
+            <input type="text" placeholder="Enter Username" name="uname" required>
+        </div>
+
+        <div id="login_password">
+            <label for="psw"><b>Password</b></label>
+            <input type="password" placeholder="Enter Password" name="psw" required>
+        </div>
+
+        <button type="submit">Login</button>
+
+        <input type="checkbox" checked="checked" name="remember"> Remember me
+    </div>
+
+    <!-- Server List -->
+    <div id="server_list">
+
+        <div id="server_list_title">
+            Please pick a local server!  The default is USA West Coast, which may be too far away for good gameplay.
+        </div>
+
+        <div class="server_list_item">
+            <a href="https://sf.bossballoon.io">USA West Coast San Francisco server: https://sf.bossballoon.io</a>
+        </div>
+
+        <div class="server_list_item">
+            <a href="https://ny.bossballoon.io">USA East Coast New York server: https://ny.bossballoon.io</a>
+        </div>
+
+        <div class="server_list_item">
+            <a href="https://lon.bossballoon.io">European London server: https://lon.bossballoon.io</a>
+        </div>
+
+        <div class="server_list_item">
+            <a href="https://jpn.bossballoon.io">East Asian Japan server: https://jpn.bossballoon.io</a>
+        </div>
+
+        <div class="server_list_item">
+            <a href="https://aus.bossballoon.io">Oceania Australian server: https://aus.bossballoon.io</a>
+        </div>
+
+    </div>
 </body>
 
 </html>

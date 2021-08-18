@@ -387,10 +387,10 @@ function OnChat(p: Player, m: string): void {
 
 let is_connection_open: bool = false;
 
-export function OnConnectionOpen(now_msec: f64): void {
+export function OnConnectionOpen(now_msec: f64, name: string): void {
     is_connection_open = true;
 
-    jsConsoleLog("UDP link up");
+    jsConsoleLog("UDP link up: name=" + name.toString());
 
     Physics.Initialize(false, now_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
         // FIXME: Handle bullet collision

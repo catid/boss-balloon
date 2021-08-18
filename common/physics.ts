@@ -1068,6 +1068,14 @@ export let MasterTimestamp: u64 = 0;
 export function SimulateTo(local_ts: u64, server_ts: u64): void {
     let dt: i32 = i32(local_ts - MasterTimestamp);
 
+    // If the user navigates away from the game tab and navigates back, there can be a huge dt.
+    // We cap the dt for physics simulation to avoid "hanging".
+    const max_dt = 4 * 1000 * 10; // 10 seconds
+
+    if (dt > max_dt) {
+        dt = max_dt;
+    }
+
     // Roll back server time to current MasterTimestamp
     server_ts -= dt;
 

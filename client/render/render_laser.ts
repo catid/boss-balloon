@@ -68,9 +68,8 @@ const kFS: string = `
 
         vec2 speed = vec2(0.1, 0.9);
         float shift = 1.327+sin(t*2.0)/2.4;
-        float alpha = 1.0;
 
-        float dist = 15.0;
+        float dist = 30.0;
 
         vec2 p = vec2(v_pos.x * sign(v_pos.y) * dist, abs(v_pos.y) * dist);
         p += sin(p.yx*4.0+vec2(.2,-.3)*t)*0.04;
@@ -86,15 +85,23 @@ const kFS: string = `
         vec3 c = mix(c1, c2, fbm(p + r)) + mix(c3, c4, r.x) - mix(c5, c6, r.y);
         vec3 color = vec3( 1.0/(pow(c+1.61,vec3(4.0))) );
 
-        color=u_color/(pow((r.y+r.y)* max(.0,p.y)+0.1, 4.0));
+        color = u_color/(pow((r.y+r.y)* max(.0,p.y)+0.1, 4.0));
         color = color/(1.0+max(vec3(0),color));
+
+        float alpha = 1.0;
+        if (color.x + color.y + color.z < 0.3) {
+            alpha = 0.0;
+        }
+
+        //alpha *= sin(clamp(v_pos.y / 0.04 + 3.14159 * 0.5, 0.0, 3.14159));
+
         return vec4(color, alpha);
     }
 
     vec4 GetWarningBeam() {
         // pulsate
-        float pulse_x = sin(v_pos.x * 40.0 - u_t * 2.0) + 1.0;
-        float pulse_t = sin(u_t) * 0.5 + 1.0;
+        float pulse_x = sin(v_pos.x * 40.0 - u_t) + 1.0;
+        float pulse_t = sin(u_t) + 1.0;
         vec3 h_color = u_color * pulse_x * pulse_t;
 
         // grating
@@ -104,7 +111,7 @@ const kFS: string = `
         }
 
         // beamize
-        float beam_width = abs(1.0 / (300.0 * v_pos.y));
+        float beam_width = abs(1.0 / (600.0 * v_pos.y));
 
         float alpha = back_value * beam_width;
         float edge = ( 5.0 - clamp(abs(v_pos.x), 4.8, 5.0) ) * 20.0;
@@ -207,7 +214,7 @@ export class RenderLaserProgram {
         gl.uniform3f(this.u_color, color.r, color.g, color.b);
         gl.uniform2f(this.u_xy, x, y);
         gl.uniform1f(this.u_angle, angle);
-        gl.uniform1f(this.u_t, f32(t) * Mathf.PI / 1024.0 + pulserate * pulserate * Mathf.PI * 2.0);
+        gl.uniform1f(this.u_t, f32(t) * Mathf.PI / 4096.0 + pulserate * pulserate * Mathf.PI * 2.0);
         gl.uniform1f(this.u_scale, scale);
         gl.uniform1f(this.u_fire, fire);
 

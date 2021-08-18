@@ -1,9 +1,9 @@
 # TODO
 
-Periodic team-colored laser blasts
+Player bullets look way too laggy on his own screen
 
+Player needs to generate his own bullets - It looks too laggy on other screens
 
-Client seems to hang after a while
 
 iOS version does not load
 
@@ -11,15 +11,11 @@ After running a server for a while, the time sync seems to be off even after ref
 
 
 
-Player needs to generate his own bullets - It looks too laggy on other screens
-
-
 Collision detection response
 
 Update player scores for kills
 
 
-- Server list on HTML page
 - Name selection to URL
 
 ```

@@ -52,7 +52,17 @@ function StopWebsocket() {
 }
 
 function OnConnectionOpen() {
-    wasmExports["OnConnectionOpen"](performance.now());
+    var name = "";
+    var values = window.location.href.split("?");
+    if (values.length >= 2) {
+        name = values[values.length - 1];
+    }
+
+    const name_ptr = wasmExports["__pin"]( wasmExports["__newString"](name) );
+
+    wasmExports["OnConnectionOpen"](performance.now(), name_ptr);
+
+    wasmExports["__unpin"](name_ptr);
 
     timeSyncInterval = 100;
     var dispatchTimeSync = () => {
@@ -146,7 +156,7 @@ function StartRTCPeerConnection(on_offer) {
         //console.log('onopen:', webrtc_unreliable.readyState, ev);
         webrtc_dc_count++;
         if (webrtc_dc_count >= 2) {
-            wasmExports["OnConnectionOpen"](performance.now());
+            OnConnectionOpen();
         }
     };
     webrtc_unreliable.onerror = ev => {
