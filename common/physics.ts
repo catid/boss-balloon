@@ -1146,18 +1146,21 @@ export function IncorporateServerShot(
 
     jsConsoleLog("DELAY = " + send_delay.toString() + " OFFSET = " + last_shot_offset.toString() + " DT = " + shot_dt.toString());
 
-    if (shot_dt >= kProjectileInterval / 2) {
-        p.last_shot_local_ts = local_shot_ts;
+    // If we have received this shot already:
+    if (shot_dt < kProjectileInterval / 2) {
+        // Note: This does not handle shots received out of order
+        return;
+    }
+    p.last_shot_local_ts = local_shot_ts;
 
-        const is_bomb: bool = IsBombServerTime(server_shot_ts);
-        PlayerFireProjectile(
-            p, local_shot_ts, server_shot_ts, is_bomb,
-            shot_x, shot_y, shot_vx, shot_vy, true);
+    const is_bomb: bool = IsBombServerTime(server_shot_ts);
+    PlayerFireProjectile(
+        p, local_shot_ts, server_shot_ts, is_bomb,
+        shot_x, shot_y, shot_vx, shot_vy, true);
 
-        const is_laser: bool = IsLaserServerTime(server_shot_ts);
-        if (is_laser) {
-            PlayerFireLaser(local_shot_ts, p, shot_x, shot_y, shot_vx, shot_vy);
-        }
+    const is_laser: bool = IsLaserServerTime(server_shot_ts);
+    if (is_laser) {
+        PlayerFireLaser(local_shot_ts, p, shot_x, shot_y, shot_vx, shot_vy);
     }
 }
 

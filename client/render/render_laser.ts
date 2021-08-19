@@ -95,6 +95,9 @@ const kFS: string = `
 
         //alpha *= sin(clamp(v_pos.y / 0.04 + 3.14159 * 0.5, 0.0, 3.14159));
 
+        float edge = ( 5.0 - clamp(abs(v_pos.x), 4.8, 5.0) ) * 20.0;
+        alpha *= edge;
+
         return vec4(color, alpha);
     }
 
@@ -114,6 +117,7 @@ const kFS: string = `
         float beam_width = abs(1.0 / (600.0 * v_pos.y));
 
         float alpha = back_value * beam_width;
+
         float edge = ( 5.0 - clamp(abs(v_pos.x), 4.8, 5.0) ) * 20.0;
         alpha *= edge;
 

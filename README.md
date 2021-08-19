@@ -1,10 +1,15 @@
 # TODO
 
 Player bullet extrapolation seems too far ahead.
-Caused by: const last_shot_offset: i32 = i32(u32(server_ts) % u32(kProjectileInterval));
+May be on server side.
+May be related to time sync.
+Seems to happen after server has been running for a while...
 
 Player needs to generate his own bullets - It looks too laggy on other screens
 
+Smooth player motion.
+
+Saw a case where both clients stopped receiving updates for eachother??
 
 iOS version does not load
 
@@ -25,8 +30,6 @@ Server selection in-game
 User login
 Chat
 User database
-
-https://codesandbox.io/s/css-tricks-msdf-text-fks8w?from-embed=&file=/src/Text.js
 
 
 # HOW-TO: Local Development
@@ -216,6 +219,13 @@ pm2 monit
 
 # Gamedev Notes
 
+Touch/mouse input:
+https://patrickhlauke.github.io/getting-touchy-presentation/#157
+
+MSDF fonts:
+https://codesandbox.io/s/css-tricks-msdf-text-fks8w?from-embed=&file=/src/Text.js
+
+
 AssemblyScript:
 
 AS WebGL bindings:
@@ -278,7 +288,7 @@ https://petersalomonsen.com/webassemblymusic/livecodev2/?gist=a74d2d036b3ecaa01a
 https://www.youtube.com/watch?v=C8j_ieOm4vE&list=PLv5wm4YuO4IxRDu1k8fSBVuUlULA8CRa7
 
 
-## Canvas Rescaling
+Canvas Rescaling:
 
 Reference:
 https://stackoverflow.com/questions/33515707/scaling-a-javascript-canvas-game-properly
@@ -290,8 +300,3 @@ Disable image smoothing:
 https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/imageSmoothingEnabled
 
 canvas.width and canvas.height set the size of the canvas. canvas.style.width and canvas.style.height set the resolution.
-
-
-## Touch/Mouse Input
-
-https://patrickhlauke.github.io/getting-touchy-presentation/#157

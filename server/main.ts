@@ -219,6 +219,9 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
         const dx = Physics.MapDiff(c.Collider.x, x0);
         const dy = Physics.MapDiff(c.Collider.y, y0);
         const mag2 = dx * dx + dy * dy;
+
+        //jsConsoleLog("mag2 = " + mag2.toString() + " pos_limit2 = " + pos_limit2.toString() + " c.Collider.x=" + c.Collider.x.toString() + " x0=" + x0.toString() + " dx=" + dx.toString());
+
         if (mag2 < pos_limit2) {
             c.send_position_info = true;
             ++pos_count;
