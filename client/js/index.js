@@ -7,6 +7,9 @@ let wasmModule;
 let wasmExports; // Shortcut for wasmExports
 
 var cnvs = document.getElementById("cnvs");
+var login_button = document.getElementById("login_button");
+var name_text = document.getElementById("name_text");
+var password_text = document.getElementById("password_text");
 
 
 //------------------------------------------------------------------------------
@@ -59,9 +62,7 @@ function OnConnectionOpen() {
     }
 
     const name_ptr = wasmExports["__pin"]( wasmExports["__newString"](name) );
-
     wasmExports["OnConnectionOpen"](performance.now(), name_ptr);
-
     wasmExports["__unpin"](name_ptr);
 
     timeSyncInterval = 100;
@@ -297,6 +298,23 @@ function StartWebsocket() {
         }
     };
 }
+
+
+//------------------------------------------------------------------------------
+// Login
+
+login_button.addEventListener('click', function(e) {
+    var name = name_text.value;
+    var password = password_text.value;
+
+    const name_ptr = wasmExports["__pin"]( wasmExports["__newString"](name) );
+    const password_ptr = wasmExports["__pin"]( wasmExports["__newString"](password) );
+
+    wasmExports["OnLoginClick"](name_ptr, password_ptr);
+
+    wasmExports["__unpin"](name_ptr);
+    wasmExports["__unpin"](password_ptr);
+});
 
 
 //------------------------------------------------------------------------------

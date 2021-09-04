@@ -1,5 +1,9 @@
 # TODO
 
+Collisions for lasers.
+
+Login callback for server.
+
 Player bullet extrapolation seems too far ahead.
 May be on server side.
 May be related to time sync.

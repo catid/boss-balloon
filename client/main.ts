@@ -425,6 +425,14 @@ export function OnConnectionClose(): void {
 
 
 //------------------------------------------------------------------------------
+// Login
+
+export function OnLoginClick(name: string, password: string): void {
+    jsConsoleLog("Login: name=" + name.toString() + " password: " + password.toString());
+}
+
+
+//------------------------------------------------------------------------------
 // Message Deserializers
 
 export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): void {
