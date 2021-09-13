@@ -60,7 +60,7 @@ npm run client
 
 # HOW-TO: Server Deployment
 
-To update all of the servers to latest code:
+To update all of the servers to latest code, log into master server and run:
 
 ```
 ./scripts/deploy.sh
