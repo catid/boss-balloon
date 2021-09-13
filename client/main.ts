@@ -156,12 +156,20 @@ function RenderPlayers(local_ts: u64): void {
         const r: Player = p.client_render_player!;
 
         if (r.render_name_data != null) {
+            // Currently equal to number of characters because it's fixed width
+            const w: f32 = r.render_name_data!.width;
+            const h: f32 = r.render_name_data!.height;
+
+            const screen_max_w: f32 = 0.32 * Physics.InvScreenScale;
+            const screen_max_h: f32 = 0.05 * Physics.InvScreenScale;
+            let scale: f32 = min(screen_max_w / w, screen_max_h / h);
+
             FontProgram.BeginRender();
             FontProgram.SetColor(kTeamTextColors[p.team],  kTextStrokeColor);
             FontProgram.Render(
                 RenderTextHorizontal.Center, RenderTextVertical.Center,
-                sx, sy + p.r * Physics.MapToScreen,
-                0.32 * Physics.InvScreenScale / r.render_name_data!.width, r.render_name_data!);
+                sx, sy + p.r * Physics.MapToScreen, // Center text on the bottom edge of the player avatar
+                scale, r.render_name_data!);
         }
     });
 }

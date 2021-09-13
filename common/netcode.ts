@@ -20,6 +20,10 @@ export const kMaxPacketBytes: i32 = 1100;
 export const kClientLoginSendLimitMsec: i32 = 2000; // 2 seconds
 export const kServerLoginSendLimitMsec: i32 = 1000; // 1 second
 
+// Login username/password length limits
+export const kPlayerNameMax: i32 = 12;
+export const kPlayerPasswordMax: i32 = 32;
+
 /*
     Unreliable packet formats:
 

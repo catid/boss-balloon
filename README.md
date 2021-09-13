@@ -2,7 +2,6 @@
 
 Collisions for lasers.
 
-Login callback for server.
 
 Player bullet extrapolation seems too far ahead.
 May be on server side.
@@ -15,8 +14,6 @@ Smooth player motion.
 
 Saw a case where both clients stopped receiving updates for eachother??
 
-iOS version does not load
-
 
 
 Collision detection response
@@ -24,16 +21,13 @@ Collision detection response
 Update player scores for kills
 
 
-- Name selection to URL
+iOS version does not load
+
 
 Future:
-Bomb/bullet fire sounds
-Bomb brighter center with glow animation
-Cloud background layer should move
-Server selection in-game
-User login
-Chat
-User database
++ Server selection in-game
++ User database
++ Chat
 
 
 # HOW-TO: Local Development

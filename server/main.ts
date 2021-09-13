@@ -611,6 +611,10 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
         } else if (type == Netcode.ReliableType.ClientLogin && remaining >= 5) {
             let name_len: i32 = load<u8>(ptr, 1);
 
+            if (name_len > Netcode.kPlayerNameMax) {
+                jsConsoleLog("Invalid ClientLogin");
+                return;
+            }
             if (1 + 1 + name_len > remaining) {
                 jsConsoleLog("Truncated ClientLogin");
                 return;
@@ -619,6 +623,10 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
             let name: string = String.UTF8.decodeUnsafe(ptr + 1 + 1, name_len, false);
             let password_len: i32 = load<u8>(ptr + name_len, 1 + 1);
 
+            if (password_len > Netcode.kPlayerPasswordMax) {
+                jsConsoleLog("Invalid ClientLogin");
+                return;
+            }
             if (1 + 1 + name_len + 1 + password_len > remaining) {
                 jsConsoleLog("Truncated ClientLogin");
                 return;
