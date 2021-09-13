@@ -427,8 +427,36 @@ export function OnConnectionClose(): void {
 //------------------------------------------------------------------------------
 // Login
 
-export function OnLoginClick(name: string, password: string): void {
+// Last time a login was attempted, in timestamp units
+let LastLoginAttemptTs: u64 = 0;
+
+export function OnLoginClick(now_msec: f64, name: string, password: string): boolean {
     jsConsoleLog("Login: name=" + name.toString() + " password: " + password.toString());
+
+    if (!is_connection_open) {
+        jsConsoleLog("Login attempt ignored because we are not connected to server yet.");
+        return false;
+    }
+
+    // Convert timestamp to integer with 1/4 msec (desired) precision
+    const local_ts: u64 = Physics.ConvertWallclock(now_msec);
+    const limit_ts: u64 = Netcode.kClientLoginSendLimitMsec * 4;
+
+    const dt_ts: u64 = local_ts - LastLoginAttemptTs;
+    if (dt_ts < limit_ts) {
+        jsConsoleLog("Ignoring login request due to rapid login attempts.")
+        return false;
+    }
+    LastLoginAttemptTs = local_ts;
+
+    let login = Netcode.MakeClientLogin(name, password);
+    if (login == null) {
+        jsConsoleLog("Ignored login request: Invalid input from UI.")
+        return false;
+    }
+
+    jsSendReliable(login);
+    return true;
 }
 
 

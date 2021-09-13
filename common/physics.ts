@@ -9,7 +9,8 @@ export namespace Physics {
 
 export const kNumTeams: i32 = 5;
 
-export const kProjectileMaxAge: i32 = 10_000 * 4; // quarters of a second
+// LSB = 1/4 of a millisecond
+export const kProjectileMaxAge: i32 = 10_000 * 4;
 
 export const kSpawnSize: u8 = 3;
 

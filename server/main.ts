@@ -24,6 +24,9 @@ class ConnectedClient {
     spawning: bool = true; // Initially spawning
     spawn_timer_start_ts: u64 = 0;
 
+    // Last time login was requested
+    last_login_recv_ts: u64 = 0;
+
     // Counter for OnSendTimer() that reduces the data for players farther away
     position_subsample_counter: u8 = 0;
     send_position_info: bool = false;
@@ -117,6 +120,23 @@ function ChooseNewPlayerTeam(): u8 {
 //------------------------------------------------------------------------------
 // Network Events
 
+function BroadcastSetPlayer(client: ConnectedClient): void {
+    // Update all the remote player lists
+    let msg = Netcode.MakeSetPlayer(
+        client.network_id, client.score, client.wins, client.losses,
+        client.skin, client.Collider.team, client.name);
+
+    if (msg == null) {
+        jsConsoleLog("MakeSetPlayer failed");
+        return;
+    }
+
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        ClientList[i].MessageCombiner.Push(msg);
+    }
+}
+
 export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
     if (IdAssigner.IsFull()) {
         jsConsoleLog("Server full - Connection denied");
@@ -146,23 +166,17 @@ export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
 
     jsSendReliable(client.javascript_id, Netcode.MakeSetId(client.network_id));
 
-    // Update all the remote player lists
-    let new_player = Netcode.MakeSetPlayer(
-        client.network_id, client.score, client.wins, client.losses,
-        client.skin, client.Collider.team, client.name);
+    BroadcastSetPlayer(client);
 
-    if (new_player != null) {
-        const client_count: i32 = ClientList.length;
-        for (let i: i32 = 0; i < client_count; ++i) {
-            let old = ClientList[i];
-            old.MessageCombiner.Push(new_player);
-
-            if (old.network_id != client.network_id) {
-                let old_player = Netcode.MakeSetPlayer(
-                    old.network_id, old.score, old.wins, old.losses,
-                    old.skin, old.Collider.team, old.name);
-                client.MessageCombiner.Push(old_player);
-            }
+    // Send the player info about all other players
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        const old = ClientList[i];
+        if (old.network_id != client.network_id) {
+            const msg = Netcode.MakeSetPlayer(
+                old.network_id, old.score, old.wins, old.losses,
+                old.skin, old.Collider.team, old.name);
+            client.MessageCombiner.Push(msg);
         }
     }
 
@@ -459,6 +473,32 @@ export function OnConnectionClose(client: ConnectedClient): void {
     }
 }
 
+export function OnClientLogin(client: ConnectedClient, name: string, password: string): void {
+    const dt_ts: u64 = last_tick_ts - client.last_login_recv_ts;
+    const limit_ts: u64 = Netcode.kServerLoginSendLimitMsec * 4;
+
+    if (dt_ts < limit_ts) {
+        // Ignore DoS attempt
+    } else {
+        // Process:
+        client.last_login_recv_ts = last_tick_ts;
+
+        jsConsoleLog("Connection login javascript_id=" + client.javascript_id.toString() + " network_id=" + client.network_id.toString() + " name=" + name + " password=" + password);
+
+        // Update client name
+        client.name = name;
+
+        // FIXME: Check name/password here.
+
+        // Let client know that login succeeded
+        let good_msg = Netcode.MakeServerLoginGood();
+        client.MessageCombiner.Push(good_msg);
+
+        // Update this player's info
+        BroadcastSetPlayer(client);
+    }
+}
+
 
 //------------------------------------------------------------------------------
 // Message Deserializers
@@ -568,6 +608,27 @@ export function OnReliableData(client: ConnectedClient, buffer: Uint8Array): voi
             }
 
             offset += 4 + m_len;
+        } else if (type == Netcode.ReliableType.ClientLogin && remaining >= 5) {
+            let name_len: i32 = load<u8>(ptr, 1);
+
+            if (1 + 1 + name_len > remaining) {
+                jsConsoleLog("Truncated ClientLogin");
+                return;
+            }
+
+            let name: string = String.UTF8.decodeUnsafe(ptr + 1 + 1, name_len, false);
+            let password_len: i32 = load<u8>(ptr + name_len, 1 + 1);
+
+            if (1 + 1 + name_len + 1 + password_len > remaining) {
+                jsConsoleLog("Truncated ClientLogin");
+                return;
+            }
+
+            let password: string = String.UTF8.decodeUnsafe(ptr + 1 + 1 + name_len + 1, password_len, false);
+
+            OnClientLogin(client, name, password);
+
+            offset += 1 + 1 + name_len + 1 + password_len;
         } else {
             jsConsoleLog("Client sent invalid reliable data");
             return;
@@ -599,9 +660,13 @@ export function Initialize(t_msec: f64): void {
 //------------------------------------------------------------------------------
 // Server Main Loop
 
+let last_tick_ts: u64 = 0;
+
 export function OnTick(now_msec: f64): void {
     // Convert timestamp to integer with 1/4 msec (desired) precision
     let t: u64 = Physics.ConvertWallclock(now_msec);
+
+    last_tick_ts = t;
 
     Physics.SimulateTo(t, t);
 

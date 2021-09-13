@@ -16,6 +16,9 @@ export namespace Netcode {
 */
 export const kMaxPacketBytes: i32 = 1100;
 
+// Limit on client and server sides between sending login requests
+export const kClientLoginSendLimitMsec: i32 = 2000; // 2 seconds
+export const kServerLoginSendLimitMsec: i32 = 1000; // 1 second
 
 /*
     Unreliable packet formats:

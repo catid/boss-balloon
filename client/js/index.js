@@ -307,13 +307,24 @@ login_button.addEventListener('click', function(e) {
     var name = name_text.value;
     var password = password_text.value;
 
+    if (name.length == 0 || password.length == 0) {
+        login_button.innerHTML = "Missing name/pw.  Try again";
+        return;
+    }
+
     const name_ptr = wasmExports["__pin"]( wasmExports["__newString"](name) );
     const password_ptr = wasmExports["__pin"]( wasmExports["__newString"](password) );
 
-    wasmExports["OnLoginClick"](name_ptr, password_ptr);
+    var success = wasmExports["OnLoginClick"](performance.now(), name_ptr, password_ptr);
 
     wasmExports["__unpin"](name_ptr);
     wasmExports["__unpin"](password_ptr);
+
+    if (success) {
+        login_button.innerHTML = "Logging in...";
+    } else {
+        login_button.innerHTML = "Retry";
+    }
 });
 
 
@@ -519,10 +530,14 @@ wasmImports["javascript"]["jsPlaySFX"] = (name) => {
 };
 wasmImports["javascript"]["jsServerLoginGood"] = () => {
     console.log("LoginGood");
+
+    login_button.innerHTML = "Success";
 };
 wasmImports["javascript"]["jsServerLoginBad"] = (reason) => {
     var copy = wasmExports["__getString"](reason);
     console.error("LoginBad:", copy);
+
+    login_button.innerHTML = "Login failed: " + copy;
 };
 wasmImports["env"] = {};
 
