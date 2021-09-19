@@ -260,6 +260,10 @@ export class PlayerCollider {
     laser_angle: f32 = 0.0;
     // Local timestamp when laser started
     laser_local_ts: u64 = 0;
+    // Ranges from 0..1 based on how far the laser is through its pre-firing or firing sequence
+    laser_firing_progress: f32 = 0.0;
+    // Set to true on frames where the laser is firing
+    laser_is_firing: bool = false;
 
     size: u8 = 0;
 
@@ -1000,6 +1004,33 @@ function ResyncDirtyProjectile(p: Projectile, local_ts: u64): void {
     p.dirty = false;
 }
 
+function UpdatePlayerLaser(p: PlayerCollider, local_ts: u64): void {
+    p.laser_firing_progress = 0.0;
+    p.laser_is_firing = false;
+
+    if (!p.laser_active) {
+        return;
+    }
+
+    if (p.is_ghost) {
+        p.laser_active = false;
+        return;
+    }
+
+    const age = i32(local_ts) - i32(p.laser_local_ts);
+    if (age < 0 || age > Physics.kLaserIntervalTime) {
+        p.laser_active = false;
+        return;
+    }
+
+    if (age < Physics.kLaserSubIntervalTime * 3) {
+        p.laser_firing_progress = f32(age) / f32(Physics.kLaserSubIntervalTime * 3);
+    } else {
+        p.laser_firing_progress = f32(age - Physics.kLaserSubIntervalTime * 3) / f32(Physics.kLaserSubIntervalTime);
+        p.laser_is_firing = true;
+    }
+}
+
 function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
     const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
@@ -1011,6 +1042,8 @@ function SimulationStep(dt: f32, local_ts: u64, server_ts: u64): void {
         } else {
             SimulatePlayerStep(p, dt);
         }
+
+        UpdatePlayerLaser(p, local_ts);
     }
 
     // FIXME: For now we do not generate projectiles on the client side.

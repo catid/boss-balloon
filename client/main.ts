@@ -187,22 +187,15 @@ function RenderLasers(local_ts: u64): void {
         const p = PlayerList[i];
         const c = p.Collider;
 
-        if (c.is_ghost || !c.laser_active) {
+        if (!c.laser_active) {
             continue;
         }
 
         const screen_x = Physics.MapToScreenX(c.laser_x);
         const screen_y = Physics.MapToScreenY(c.laser_y);
-        const age = i32(local_ts) - i32(c.laser_local_ts);
 
-        // If out of sync with laser timestamp:
-        if (age < 0 || age > Physics.kLaserIntervalTime) {
-            c.laser_active = false;
-            continue;
-        }
-
-        if (age < Physics.kLaserSubIntervalTime * 3) {
-            const pulserate: f32 = 3.0 * f32(age) / f32(Physics.kLaserSubIntervalTime * 3) + 1.0;
+        if (!c.laser_is_firing) {
+            const pulserate: f32 = 3.0 * c.laser_firing_progress + 1.0;
             LaserProgram.DrawLaser(
                 kTeamColors[c.team],
                 screen_x,
@@ -214,7 +207,7 @@ function RenderLasers(local_ts: u64): void {
                 0.0);
         }
         else {
-            const pulserate: f32 = 5.0 * f32(age - Physics.kLaserSubIntervalTime * 3) / f32(Physics.kLaserSubIntervalTime) + 1.0;
+            const pulserate: f32 = 5.0 * c.laser_firing_progress + 1.0;
             LaserProgram.DrawLaser(
                 kTeamColors[c.team],
                 screen_x,
