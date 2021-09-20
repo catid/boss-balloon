@@ -74,6 +74,10 @@ export const kLaserIntervalTime: i32 = kProjectileInterval * kLaserInterval;
 */
 export const kLaserSubIntervalTime: i32 = kLaserIntervalTime / 4;
 
+// If the user navigates away from the game tab and navigates back, there can be a huge dt.
+// We cap the dt for physics simulation to avoid "hanging".
+export const kMaxSimulationTime = 4 * 1000 * 4; // 4 seconds
+
 
 //------------------------------------------------------------------------------
 // Time Units
@@ -679,6 +683,14 @@ function OnHit(local_ts: u64, p: Physics.PlayerCollider, pp: Projectile): void {
     OnProjectileHit(p, pp.shooter);
 }
 
+function CheckPlayerLaserCollision(p: PlayerCollider, other: PlayerCollider): void {
+    if (other.is_ghost || !other.laser_active || other.team == p.team) {
+        return;
+    }
+
+    // FIXME: Check collision between player circle and laser rectangle
+}
+
 function CheckProjectileCollisions(local_ts: u64): void {
     const players_count: i32 = PlayerList.length;
     for (let i: i32 = 0; i < players_count; ++i) {
@@ -686,6 +698,12 @@ function CheckProjectileCollisions(local_ts: u64): void {
 
         if (p.is_ghost) {
             continue;
+        }
+
+        // Check for laser collisions
+        for (let j: i32 = 0; j < players_count; ++j) {
+            const other = PlayerList[j];
+            CheckPlayerLaserCollision(p, other);
         }
 
         const x0: i32 = PositionToProjectileMatrixTile(p.x - p.r);
@@ -1102,12 +1120,8 @@ export let MasterTimestamp: u64 = 0;
 export function SimulateTo(local_ts: u64, server_ts: u64): void {
     let dt: i32 = i32(local_ts - MasterTimestamp);
 
-    // If the user navigates away from the game tab and navigates back, there can be a huge dt.
-    // We cap the dt for physics simulation to avoid "hanging".
-    const max_dt = 4 * 1000 * 10; // 10 seconds
-
-    if (dt > max_dt) {
-        dt = max_dt;
+    if (dt > kMaxSimulationTime) {
+        dt = kMaxSimulationTime;
     }
 
     // Roll back server time to current MasterTimestamp
