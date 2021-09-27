@@ -61,6 +61,12 @@ export const kBombInterval: i32 = 4; // projectile counts
 // Multiple of projectile interval between lasers (emits laser in addition to bullet)
 export const kLaserInterval: i32 = 8; // projectile counts
 
+// Radius of laser blast in map units
+export const kLaserRadius: f32 = 20.0; // map units
+
+// Length of laser blast in map units
+export const kLaserLength: f32 = 5100.0; // map units
+
 // Time units between laser blasts
 export const kLaserIntervalTime: i32 = kProjectileInterval * kLaserInterval;
 
@@ -261,7 +267,7 @@ export class PlayerCollider {
     laser_active: bool = false;
     laser_x: f32 = 0.0;
     laser_y: f32 = 0.0;
-    laser_angle: f32 = 0.0;
+    laser_angle: f32 = 0.0; // 0 to the right, counter-clockwise
     // Local timestamp when laser started
     laser_local_ts: u64 = 0;
     // Ranges from 0..1 based on how far the laser is through its pre-firing or firing sequence
@@ -677,18 +683,56 @@ function IsColliding(p: Physics.PlayerCollider, projectile: Physics.Projectile):
 
 let OnProjectileHit: (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => void;
 
-function OnHit(local_ts: u64, p: Physics.PlayerCollider, pp: Projectile): void {
-    p.last_collision_local_ts = local_ts;
-
-    OnProjectileHit(p, pp.shooter);
-}
-
-function CheckPlayerLaserCollision(p: PlayerCollider, other: PlayerCollider): void {
-    if (other.is_ghost || !other.laser_active || other.team == p.team) {
+function OnHit(local_ts: u64, p: Physics.PlayerCollider, pp: Physics.PlayerCollider): void {
+    const cdt: i32 = i32(local_ts - p.last_collision_local_ts);
+    if (cdt < kHitShieldDelay) {
         return;
     }
 
-    // FIXME: Check collision between player circle and laser rectangle
+    p.last_collision_local_ts = local_ts;
+
+    OnProjectileHit(p, pp);
+}
+
+function CheckPlayerLaserCollision(local_ts: u64, p: PlayerCollider, other: PlayerCollider): void {
+    if (!other.laser_is_firing || other.is_ghost || !other.laser_active || other.team == p.team) {
+        return;
+    }
+
+    // Check collision between player circle and laser rectangle
+
+    const dx = MapDiff(p.x, other.laser_x);
+    const dy = MapDiff(p.y, other.laser_y);
+
+    const d_center = Mathf.sqrt(dx * dx + dy * dy);
+
+    // If no collision within length of laser:
+    if (d_center > p.r + kLaserLength) {
+        return;
+    }
+
+    // Laser formula:
+    // center point laser_x, laser_y
+    // laser_angle -> line slope a, b
+    // sin T * (x - x0) - cos T * (y - y0) = 0
+    // c = | sin T * (x - x0) - cos T * (y - y0) |
+
+    const a: f32 = Mathf.cos(other.laser_angle);
+    const b: f32 = Mathf.sin(other.laser_angle);
+
+    // d = abs(a * x0 + b * y0 + c) / sqrt(a*a + b*b)
+    // a*a + b*b = 1
+    // d = abs(a * x0 + b * y0 + c)
+    const d_line = Mathf.abs(b * dx - a * dy);
+
+    //jsConsoleLog("TEST: angle=" + other.laser_angle.toString() + " a=" + a.toString() + " b=" + b.toString() + " d_line=" + d_line.toString());
+
+    // If no collision with infinitely long line:
+    if (d_line > p.r + kLaserRadius) {
+        return;
+    }
+
+    OnHit(local_ts, p, other);
 }
 
 function CheckProjectileCollisions(local_ts: u64): void {
@@ -703,7 +747,7 @@ function CheckProjectileCollisions(local_ts: u64): void {
         // Check for laser collisions
         for (let j: i32 = 0; j < players_count; ++j) {
             const other = PlayerList[j];
-            CheckPlayerLaserCollision(p, other);
+            CheckPlayerLaserCollision(local_ts, p, other);
         }
 
         const x0: i32 = PositionToProjectileMatrixTile(p.x - p.r);
@@ -737,13 +781,8 @@ function CheckProjectileCollisions(local_ts: u64): void {
                         if (!IsColliding(p, pp)) {
                             continue;
                         }
-    
-                        const cdt: i32 = i32(local_ts - p.last_collision_local_ts);
-                        if (cdt < kHitShieldDelay) {
-                            continue;
-                        }
-    
-                        OnHit(local_ts, p, pp);
+
+                        OnHit(local_ts, p, pp.shooter);
                     }
                 }
 
@@ -760,13 +799,8 @@ function CheckProjectileCollisions(local_ts: u64): void {
                         if (!IsColliding(p, pp)) {
                             continue;
                         }
-    
-                        const cdt: i32 = i32(local_ts - p.last_collision_local_ts);
-                        if (cdt < kHitShieldDelay) {
-                            continue;
-                        }
-    
-                        OnHit(local_ts, p, pp);
+
+                        OnHit(local_ts, p, pp.shooter);
                     }
                 }
             }

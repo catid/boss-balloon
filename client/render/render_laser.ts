@@ -34,8 +34,6 @@ const kFS: string = `
     // Input from vertex shader:
     varying vec2 v_pos;
 
-
-
     float rand(vec2 n) {
         return fract(sin(cos(dot(n, vec2(12.9898,12.1414)))) * 83758.5453);
     }
