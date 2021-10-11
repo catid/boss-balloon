@@ -11,6 +11,8 @@ Smooth player motion.
 
 Add score list to the UI
 
+Player respawn sometimes flakes out
+
 
 Future:
 + Server selection in-game
