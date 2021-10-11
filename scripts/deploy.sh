@@ -16,4 +16,7 @@ for server in ${ServerList[*]}; do
 
     echo "Copying new server"
     rsync -avP --files-from=scripts/server_file_list.txt . $server:~/server/
+
+    echo "Starting new server"
+    ssh $server pm2 restart 0
 done
