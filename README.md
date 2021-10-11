@@ -13,6 +13,8 @@ Add score list to the UI
 
 Player respawn sometimes flakes out
 
+Laser size should not increase with player size
+
 
 Future:
 + Server selection in-game
