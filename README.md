@@ -9,6 +9,8 @@ Seems to happen after server has been running for a while...
 Player needs to generate his own bullets - It looks too laggy on other screens
 Smooth player motion.
 
+Add score list to the UI
+
 
 Future:
 + Server selection in-game
