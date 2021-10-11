@@ -7,7 +7,7 @@ import { jsSendUnreliable, jsSendReliable } from "./javascript"
 //------------------------------------------------------------------------------
 // Player
 
-class ConnectedClient {
+export class ConnectedClient {
     // Identifier for javascript
     javascript_id: i32;
 
@@ -39,6 +39,7 @@ class ConnectedClient {
     constructor(javascript_id: i32, team: u8) {
         this.javascript_id = javascript_id;
         this.Collider = Physics.CreatePlayerCollider(team);
+        this.Collider.server_player = this;
     }
 };
 
@@ -120,21 +121,35 @@ function ChooseNewPlayerTeam(): u8 {
 //------------------------------------------------------------------------------
 // Network Events
 
+function BroadcastReliableMessage(message: Uint8Array): void {
+    const client_count: i32 = ClientList.length;
+    for (let i: i32 = 0; i < client_count; ++i) {
+        ClientList[i].MessageCombiner.Push(message);
+    }
+}
+
 function BroadcastSetPlayer(client: ConnectedClient): void {
     // Update all the remote player lists
     let msg = Netcode.MakeSetPlayer(
         client.network_id, client.score, client.wins, client.losses,
         client.skin, client.Collider.team, client.name);
-
     if (msg == null) {
         jsConsoleLog("MakeSetPlayer failed");
         return;
     }
 
-    const client_count: i32 = ClientList.length;
-    for (let i: i32 = 0; i < client_count; ++i) {
-        ClientList[i].MessageCombiner.Push(msg);
+    BroadcastReliableMessage(msg);
+}
+
+function BroadcastKillPlayer(killer: ConnectedClient, killee: ConnectedClient): void {
+    // Update all the remote player lists
+    let msg = Netcode.MakePlayerKill(killer.network_id, killee.network_id, killer.score, killee.score);
+    if (msg == null) {
+        jsConsoleLog("MakePlayerKill failed");
+        return;
     }
+
+    BroadcastReliableMessage(msg);
 }
 
 export function OnConnectionOpen(javascript_id: i32): ConnectedClient | null {
@@ -218,6 +233,11 @@ function SendPositionsTo(client: ConnectedClient, send_shots: bool): void {
 
         c.send_position_info = false;
         c.send_shot_info = false;
+
+        // Do not send ghost positions
+        if (c.Collider.is_ghost) {
+            continue;
+        }
 
         // Always send shot info if we can
         if (c.Collider.has_last_shot) {
@@ -549,24 +569,27 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
             const client_ts: u32 = Netcode.Load24(ptr, 1);
             const client_send_ts: u64 = client.TimeSync.PeerToLocalTime_FromTS23(client_ts);
 
-            const c: Physics.PlayerCollider = client.Collider;
+            // Ignore position messages while spawning
+            if (!client.spawning) {
+                const c: Physics.PlayerCollider = client.Collider;
 
-            c.x = Netcode.Convert16toX(load<u16>(ptr, 4));
-            c.y = Netcode.Convert16toX(load<u16>(ptr, 6));
-            c.vx = Netcode.Convert16toVX(load<i16>(ptr, 8));
-            c.vy = Netcode.Convert16toVX(load<i16>(ptr, 10));
-            const aa: u16 = load<u16>(ptr, 12);
-
-            let ax: f32 = 0.0, ay: f32 = 0.0;
-            if (aa != 0) {
-                const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
-                ax = Mathf.cos(angle);
-                ay = Mathf.sin(angle);
+                c.x = Netcode.Convert16toX(load<u16>(ptr, 4));
+                c.y = Netcode.Convert16toX(load<u16>(ptr, 6));
+                c.vx = Netcode.Convert16toVX(load<i16>(ptr, 8));
+                c.vy = Netcode.Convert16toVX(load<i16>(ptr, 10));
+                const aa: u16 = load<u16>(ptr, 12);
+    
+                let ax: f32 = 0.0, ay: f32 = 0.0;
+                if (aa != 0) {
+                    const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
+                    ax = Mathf.cos(angle);
+                    ay = Mathf.sin(angle);
+                }
+    
+                const send_delay: i32 = i32(local_recv_ts - client_send_ts);
+    
+                Physics.IncorporateClientPosition(client.Collider, local_recv_ts, send_delay);
             }
-
-            const send_delay: i32 = i32(local_recv_ts - client_send_ts);
-
-            Physics.IncorporateClientPosition(client.Collider, local_recv_ts, send_delay);
 
             offset += 14;
         } else {
@@ -660,7 +683,32 @@ export const UINT8ARRAY_ID = idof<Uint8Array>();
 
 export function Initialize(t_msec: f64): void {
     Physics.Initialize(true, t_msec, (killee: Physics.PlayerCollider, killer: Physics.PlayerCollider) => {
-        jsConsoleLog("Player hit: Killee team = " + killee.team.toString() + " at t=" + last_tick_ts.toString());
+        const killee_client: ConnectedClient = killee.server_player!;
+        const killer_client: ConnectedClient = killer.server_player!;
+
+        if (killee.size <= 0) {
+            jsConsoleLog("Player killed: " + killee_client.name + " by " + killer_client.name + " at t=" + last_tick_ts.toString());
+
+            // Start player spawning
+            killee_client.spawning = true;
+            killee_client.spawn_timer_start_ts = Physics.MasterTimestamp + 8_000 * 4;
+            killee.is_ghost = true;
+
+            if (killer_client.score < 65535) {
+                killer_client.score++;
+            }
+            if (killee_client.score > 0) {
+                killee_client.score--;
+            }
+
+            BroadcastKillPlayer(killer_client, killee_client);
+        } else {
+            killee.SetSize(killee.size - 1);
+        }
+
+        if (killer.size < 255) {
+            killer.SetSize(killer.size + 1);
+        }
     });
 }
 
@@ -688,6 +736,8 @@ export function OnTick(now_msec: f64): void {
             if (dt > 8_000 * 4) {
                 client.spawning = false;
                 Physics.SetRandomSpawnPosition(client.Collider);
+
+                jsConsoleLog("Player spawned: " + client.name);
             }
         }
     }

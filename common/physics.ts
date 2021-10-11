@@ -1,5 +1,6 @@
 import { jsConsoleLog, jsGetMilliseconds } from "./javascript"
 import { Player as RenderPlayer } from "../client/main"
+import { ConnectedClient } from "../server/main"
 
 export namespace Physics {
 
@@ -22,7 +23,7 @@ export const kMaxPlayerRadius: f32 = 400.0;
 
 // Larger scale = zoom out
 export const kMinScale: f32 = 1.0;
-export const kMaxScale: f32 = 10.0;
+export const kMaxScale: f32 = 2.5;
 
 export const kMinPlayerGuns: i32 = 1; // # bullets fired
 export const kMaxPlayerGuns: i32 = 10;
@@ -242,7 +243,7 @@ export function LaserScaleForSize(size: u8): f32 {
 // PlayerCollider
 
 export class PlayerCollider {
-    // Indicates that the position data is out of sync with the 
+    // Indicates that the position data is out of sync with the simulation
     dirty: bool = false;
     t: u64 = 0; // Latest physics update timestamp
 
@@ -280,7 +281,10 @@ export class PlayerCollider {
     last_collision_local_ts: u64 = 0;
 
     // Only used on client side
-    client_render_player: RenderPlayer | null = null;
+    client_player: RenderPlayer | null = null;
+
+    // Only used on server side
+    server_player: ConnectedClient | null = null;
 
     // Number of guns
     gun_count: i32 = 1;

@@ -1,27 +1,13 @@
 # TODO
 
-Collisions for lasers.
-
+iOS version does not load
 
 Player bullet extrapolation seems too far ahead.
 May be on server side.
-May be related to time sync.
+Seems to be related to time sync.
 Seems to happen after server has been running for a while...
-
 Player needs to generate his own bullets - It looks too laggy on other screens
-
 Smooth player motion.
-
-Saw a case where both clients stopped receiving updates for eachother??
-
-
-
-Collision detection response
-
-Update player scores for kills
-
-
-iOS version does not load
 
 
 Future:

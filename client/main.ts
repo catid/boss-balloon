@@ -97,7 +97,7 @@ export class Player {
 
     constructor(team: u8) {
         this.Collider = Physics.CreatePlayerCollider(team);
-        this.Collider.client_render_player = this;
+        this.Collider.client_player = this;
     }
 
     SetName(name: string): void {
@@ -153,7 +153,7 @@ function RenderPlayers(local_ts: u64): void {
 
         StringProgram.DrawString(kTeamColors[p.team], sx, sy, sx + p.vx * 0.1, sy + p.vy * 0.1, render_player_ts);
 
-        const r: Player = p.client_render_player!;
+        const r: Player = p.client_player!;
 
         if (r.render_name_data != null) {
             // Currently equal to number of characters because it's fixed width
@@ -596,6 +596,8 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     const last_shot_vx: f32 = Netcode.Convert16toVX(load<i16>(pptr, 6));
                     const last_shot_vy: f32 = Netcode.Convert16toVX(load<i16>(pptr, 8));
 
+                    p.last_position_local_ts = local_ts;
+
                     // FIXME: Correct our shot positions too
                     //if (p.is_self)
                     {
@@ -738,8 +740,11 @@ export function OnConnectionReliableData(buffer: Uint8Array): void {
             if (PlayerMap.has(killer_id) && PlayerMap.has(killee_id)) {
                 let killer: Player = PlayerMap.get(killer_id);
                 let killee: Player = PlayerMap.get(killee_id);
+
                 killer.score = load<u16>(ptr, 3);
                 killee.score = load<u16>(ptr, 5);
+
+                killee.Collider.is_ghost = true;
 
                 OnPlayerKilled(killer, killee);
             }
@@ -869,6 +874,26 @@ export function Initialize(): void {
 //------------------------------------------------------------------------------
 // Render
 
+function GhostSilentPlayers(local_ts: u64): void {
+    const players_count = PlayerList.length;
+
+    for (let i: i32 = 0; i < players_count; ++i) {
+        const p = PlayerList[i];
+
+        if (p.is_self || p.Collider.is_ghost) {
+            continue;
+        }
+
+        const dt_ts: i32 = i32(local_ts - p.last_position_local_ts);
+        const kGhostInterval: i32 = 3 * 1000 * 4 // time units
+        if (dt_ts > kGhostInterval) {
+            // Server stopped sending position data for this player - Set them as ghosted to avoid rendering stale data
+            p.Collider.is_ghost = true;
+            jsConsoleLog("Stopped receiving position data for player: " + p.name);
+        }
+    }
+}
+
 export function RenderFrame(
     now_msec: f64,
     finger_x: i32, finger_y: i32,
@@ -884,6 +909,8 @@ export function RenderFrame(
     // Convert timestamp to integer with 1/4 msec (desired) precision
     const local_ts: u64 = Physics.ConvertWallclock(now_msec);
     const server_ts: u64 = TimeSync.TransformLocalToRemote(local_ts);
+
+    GhostSilentPlayers(local_ts);
 
     // Update positions to current time
     Physics.SimulateTo(local_ts, server_ts);

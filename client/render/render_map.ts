@@ -14,7 +14,7 @@ const kVertexShaderCode: string = `
 
     void main() {
         vec2 p = a_position;
-        v_coord = p * u_scale + u_xy;
+        v_coord = (p + u_xy) * u_scale;
         gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
     }
 `;
