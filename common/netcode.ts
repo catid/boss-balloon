@@ -903,12 +903,8 @@ export function ConvertAccelto16(ax: f32, ay: f32): u16 {
         aa = 65534;
     }
     ++aa;
-    return aa;
-}
 
-export class AccelXY {
-    ax: f32
-    ay: f32
+    return aa;
 }
 
 export const inv_aa_factor: f32 = (Mathf.PI * 2.0) / 65534.0;

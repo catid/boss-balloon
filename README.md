@@ -2,18 +2,11 @@
 
 iOS version does not load
 
-Player bullet extrapolation seems too far ahead.
-May be on server side.
-Seems to be related to time sync.
-Seems to happen after server has been running for a while...
-Player needs to generate his own bullets - It looks too laggy on other screens
-Smooth player motion.
-
 Add score list to the UI
 
-Player respawn sometimes flakes out
+Need respawn timer on screen
 
-Laser size should not increase with player size
+Player respawn sometimes flakes out
 
 
 Future:

@@ -582,12 +582,14 @@ export function OnUnreliableData(client: ConnectedClient, recv_msec: f64, buffer
                 let ax: f32 = 0.0, ay: f32 = 0.0;
                 if (aa != 0) {
                     const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
-                    ax = Mathf.cos(angle);
-                    ay = Mathf.sin(angle);
+                    ax = Mathf.cos(angle) * Physics.kPlayerAcceleration;
+                    ay = Mathf.sin(angle) * Physics.kPlayerAcceleration;
                 }
-    
+                c.ax = ax;
+                c.ay = ay;
+
                 const send_delay: i32 = i32(local_recv_ts - client_send_ts);
-    
+
                 Physics.IncorporateClientPosition(client.Collider, local_recv_ts, send_delay);
             }
 

@@ -178,7 +178,6 @@ function RenderLasers(local_ts: u64): void {
     LaserProgram.BeginLasers();
 
     const players_count = PlayerList.length;
-
     if (players_count == 0) {
         return;
     }
@@ -201,7 +200,7 @@ function RenderLasers(local_ts: u64): void {
                 screen_x,
                 screen_y,
                 local_ts,
-                Physics.LaserScaleForSize(c.size) * Physics.InvScreenScale,
+                Physics.InvScreenScale,
                 c.laser_angle,
                 pulserate,
                 0.0);
@@ -213,7 +212,7 @@ function RenderLasers(local_ts: u64): void {
                 screen_x,
                 screen_y,
                 local_ts,
-                Physics.LaserScaleForSize(c.size) * Physics.InvScreenScale,
+                Physics.InvScreenScale,
                 c.laser_angle,
                 pulserate,
                 1.0);
@@ -550,8 +549,8 @@ export function OnConnectionUnreliableData(recv_msec: f64, buffer: Uint8Array): 
                     let ax: f32 = 0.0, ay: f32 = 0.0;
                     if (aa != 0) {
                         const angle: f32 = (aa - 1) * Netcode.inv_aa_factor;
-                        ax = Mathf.cos(angle);
-                        ay = Mathf.sin(angle);
+                        ax = Mathf.cos(angle) * Physics.kPlayerAcceleration;
+                        ay = Mathf.sin(angle) * Physics.kPlayerAcceleration;
                     }
                     c.ax = ax;
                     c.ay = ay;
@@ -823,8 +822,8 @@ export function SendPosition(t: u64): void {
 
     // Min send rate if not rapidly navigating
     if (dt < 200 * 4) {
-        if (Mathf.abs(c.ax - last_ax) < 0.3 &&
-            Mathf.abs(c.ay - last_ay) < 0.3) {
+        if (Mathf.abs(c.ax - last_ax) < 0.3 * Physics.kPlayerAcceleration &&
+            Mathf.abs(c.ay - last_ay) < 0.3 * Physics.kPlayerAcceleration) {
             return;
         }
     }
@@ -943,9 +942,8 @@ export function RenderFrame(
             const mag: f32 = Mathf.sqrt(fsx * fsx + fsy * fsy);
             const dead_zone: f32 = 0.1;
             if (mag > dead_zone) {
-                const accel: f32 = 0.001;
-                FrameSelf.Collider.ax = fsx * accel / mag;
-                FrameSelf.Collider.ay = fsy * accel / mag;
+                FrameSelf.Collider.ax = fsx * Physics.kPlayerAcceleration / mag;
+                FrameSelf.Collider.ay = fsy * Physics.kPlayerAcceleration / mag;
             }
         }
     }
