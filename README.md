@@ -199,6 +199,15 @@ pm2 save
 pm2 monit
 ```
 
+Restart server automatically on the first of each month:
+
+```
+crontab -e
+```
+Add this line:
+```
+* * 1 * * /root/git/boss-balloon/scripts/restart.sh
+```
 
 # Gamedev Notes
 
